@@ -1,0 +1,1 @@
+ALTER TABLE `praise_stamps` ADD `content` text DEFAULT '' NOT NULL;

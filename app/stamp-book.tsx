@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X } from 'lucide-react';
-import { koreaDay, type StampRecord } from '../lib/stamps';
+import { type StampRecord } from '../lib/stamps';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
@@ -18,7 +18,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [view, setView] = useState('calendar');
+  const [view, setView] = useState('list');
   const [selectedDay, setSelectedDay] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<StampRecord | null>(null);
   const [password, setPassword] = useState('');
@@ -27,40 +27,53 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const passwordInput = useRef<HTMLInputElement>(null);
   const mutationPending = useRef(false);
+  const mutationRevision = useRef(0);
+  const pendingAdd = useRef<{id: string; content: string} | null>(null);
+  const [content, setContent] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true); setError('');
+  const load = useCallback(async (quiet = false) => {
+    const revision = mutationRevision.current;
+    if (!quiet) { setLoading(true); setError(''); }
     try {
-      const response = await fetch('/api/stamps', { cache: 'no-store', credentials: 'same-origin' });
+      const response = await fetch('/api/stamps', { cache: 'no-store', credentials: 'omit' });
       const data = await response.json() as ApiResponse;
       if (!response.ok) throw new Error(data.error);
+      if (revision !== mutationRevision.current) return;
       setRecords(data.records); setToday(data.today);
+      setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '도장을 불러오지 못했습니다.');
-    } finally { setLoading(false); }
+      if (revision === mutationRevision.current) setError(err instanceof Error ? err.message : '도장을 불러오지 못했습니다.');
+    } finally { if (!quiet) setLoading(false); }
   }, []);
 
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  useEffect(() => { void Promise.resolve().then(() => load()); }, [load]);
   useEffect(() => {
-    const sync = () => { if (document.visibilityState === 'visible' && !mutationPending.current) void load(); };
+    const sync = () => { if (document.visibilityState === 'visible' && !mutationPending.current) void load(true); };
     document.addEventListener('visibilitychange', sync);
-    const timer = setInterval(() => { if (koreaDay() !== today && !mutationPending.current) void load(); }, 30000);
+    const timer = setInterval(() => { if (document.visibilityState === 'visible' && !mutationPending.current) void load(true); }, 15000);
     return () => { document.removeEventListener('visibilitychange', sync); clearInterval(timer); };
-  }, [load, today]);
+  }, [load]);
 
-  async function addStamp() {
+  async function addStamp(event: FormEvent) {
+    event.preventDefault();
     if (mutationPending.current) return;
     mutationPending.current = true;
+    mutationRevision.current++;
     setSaving(true); setMessage(''); setError('');
     try {
+      if (!pendingAdd.current || pendingAdd.current.content !== content) {
+        pendingAdd.current = { id: crypto.randomUUID(), content };
+      }
       const response = await fetch('/api/stamps', {
-        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: crypto.randomUUID() }),
+        method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingAdd.current),
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok) throw new Error(data.error);
       setRecords(previous => [data.record, ...previous.filter(r => r.id !== data.record.id)]);
       setToday(data.today); setMonth(data.today.slice(0,7));
+      setContent(''); pendingAdd.current = null;
+      setSelectedDay(''); setView('list');
       setMessage('잘했어요! 칭찬 도장 하나를 찍었어요.');
     } catch (err) { setError(err instanceof Error ? err.message : '도장을 저장하지 못했습니다.'); }
     finally { setSaving(false); mutationPending.current = false; }
@@ -78,10 +91,10 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   async function removeStamp(event: FormEvent) {
     event.preventDefault();
     if (!deleteTarget || mutationPending.current) return;
-    mutationPending.current = true; setDeleting(true); setDeleteError(''); setMessage('');
+    mutationPending.current = true; mutationRevision.current++; setDeleting(true); setDeleteError(''); setMessage('');
     try {
       const response = await fetch('/api/stamps', {
-        method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        method: 'DELETE', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: deleteTarget.id, password }),
       });
       const data = await response.json() as ApiResponse;
@@ -108,29 +121,33 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   return <>
     <header>
       <Link className="brand" href="/" aria-label="도장 홈"><span className="brand-mark"><Stamp size={22} /></span>도장<span className="brand-en">dozang</span></Link>
-      <div className="account"><span>나의 칭찬 수첩</span></div>
+      <div className="account"><span>함께 쓰는 칭찬 도장판</span></div>
     </header>
     <main>
-      <div className="intro"><p className="eyebrow">MY PRAISE STAMPS</p><h1>잘했어요!</h1><p>잘한 일 하나에 도장 하나. 나의 칭찬을 차곡차곡 모아요.</p></div>
+      <div className="intro"><p className="eyebrow">OUR PRAISE STAMPS</p><h1>잘했어요!</h1><p>잘한 일과 칭찬을 적고, 도장을 함께 모아요.</p></div>
       <div className="workspace">
         <aside>
           <section className="check-card">
             <div className="card-top"><span>칭찬 도장</span><span className="tag">잘할 때마다</span></div>
             <p className="today-date">{formatDate(today)}</p>
-            <div className="big-stamp praise-stamp"><Star size={38} strokeWidth={1.4} /><strong>잘했어요!</strong><span>참 잘했어요</span></div>
-            <h2>오늘의 잘한 일을 칭찬해요.</h2><p className="card-desc">작은 노력도 도장으로 남겨 보세요.</p>
-            <button className="primary" disabled={loading || saving || deleting || !!error} onClick={addStamp}><Stamp size={19} />{saving ? '도장 찍는 중…' : loading ? '도장 확인 중…' : '잘했어요! 도장 찍기'}</button>
+            <div className="composer-overview"><div className="big-stamp praise-stamp"><Star size={30} strokeWidth={1.4} /><strong>잘했어요!</strong></div><div><h2>어떤 일을 잘했나요?</h2><p className="card-desc">작은 노력도 칭찬으로 남겨요.</p></div></div>
+            <form className="stamp-composer" onSubmit={addStamp}>
+              <div className="content-label"><label htmlFor="stamp-content">칭찬 내용 <span>선택</span></label><span id="content-count">{content.length}/300</span></div>
+              <textarea id="stamp-content" name="content" maxLength={300} rows={3} placeholder="예: 오늘 책을 끝까지 읽었어요!" value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help" />
+              <p id="content-help" className="content-help">적은 내용은 도장과 함께 모두에게 보여요.</p>
+              <button className="primary" type="submit" disabled={loading || saving || deleting}><Stamp size={19} />{saving ? '도장 찍는 중…' : loading ? '도장 확인 중…' : '잘했어요! 도장 찍기'}</button>
+            </form>
             <p className="timezone">하루에 여러 개 찍을 수 있어요.</p>
           </section>
           <section className="stats" aria-label="칭찬 도장 개수">
             <div><span><Stamp size={17} />모은 도장</span><strong>{loading ? '—' : records.length}<small>개</small></strong></div>
             <div><span><Star size={17} />오늘의 칭찬</span><strong>{loading ? '—' : dayCounts.get(today) ?? 0}<small>개</small></strong></div>
           </section>
-          <div className="note"><CalendarDays size={20} /><p>로그인 없이 쓰는 칭찬 수첩.<br /><span>이 브라우저의 쿠키로 내 수첩을 찾아요.<br />쿠키 삭제·기기 변경 시 새로 시작해요.</span></p></div>
+          <div className="note"><CalendarDays size={20} /><p>모든 도장과 내용은 서버에 저장돼요.<br /><span>어느 기기에서든 같은 도장판을 볼 수 있어요.</span></p></div>
         </aside>
         <section className="record-card">
           <div className="record-heading">
-            <div><p className="eyebrow">STAMP COLLECTION</p><h2>나의 칭찬 도장</h2></div>
+            <div><p className="eyebrow">STAMP COLLECTION</p><h2>함께 모은 칭찬 도장</h2></div>
             <div className="view-switch" aria-label="도장 보기 방식">
               <button aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}><Grid2X2 size={16} />달력</button>
               <button aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => { setSelectedDay(''); setView('list'); }}><List size={16} />전체 도장</button>
@@ -162,7 +179,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
               <p className="history-total">{selectedDay ? '이날 모은' : '지금까지 모은'} 칭찬 도장 <b>{visibleRecords.length}개</b></p>
               <ul>{visibleRecords.map(record => <li key={record.id}>
                 <span className="history-icon"><Star size={20} /></span>
-                <div className="stamp-details"><strong>잘했어요!</strong><time>{record.day.replaceAll('-', '. ')} · {new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}</time></div>
+                <div className="stamp-details"><strong>잘했어요!</strong>{record.content && <p className="stamp-content">{record.content}</p>}<time>{record.day.replaceAll('-', '. ')} · {new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}</time></div>
                 <button className="remove-stamp" disabled={saving || deleting} onClick={() => openDelete(record)} aria-label={`${formatDate(record.day)} 도장 없애기`}><Trash2 size={16} />없애기</button>
               </li>)}</ul>
             </>}
@@ -175,6 +192,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
       <form onSubmit={removeStamp}>
         <div className="dialog-heading"><h2 id="delete-title">도장 없애기</h2><button type="button" onClick={closeDelete} disabled={deleting} aria-label="닫기"><X size={20} /></button></div>
         <p>{deleteTarget ? `${formatDate(deleteTarget.day)}의 “잘했어요!” 도장 하나를 없앱니다.` : '선택한 도장 하나를 없앱니다.'}</p>
+        {deleteTarget?.content && <blockquote className="delete-content">{deleteTarget.content}</blockquote>}
         <label htmlFor="delete-password">오늘의 비밀번호</label>
         <input ref={passwordInput} id="delete-password" type="password" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} autoComplete="off" value={password} onChange={event => setPassword(event.target.value)} required disabled={deleting} aria-describedby="password-help" />
         <p id="password-help" className="password-help">한국 시간 기준 오늘 날짜로 계산한 비밀번호를 입력해 주세요.</p>

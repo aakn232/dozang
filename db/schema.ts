@@ -7,6 +7,7 @@ export const attendance = sqliteTable('attendance', {
 
 export const praiseStamps = sqliteTable('praise_stamps', {
   id: text('id').primaryKey(),
+  content: text('content').notNull().default(''),
   userId: text('user_id').notNull(),
   day: text('day').notNull(),
   createdAt: text('created_at').notNull(),

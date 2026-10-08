@@ -9,4 +9,4 @@ export function deletionPassword(now = new Date()): string {
   const digitSum = String(day).split('').reduce((sum, digit) => sum + Number(digit), 0);
   return String(digitSum * day);
 }
-export type StampRecord = { id: string; day: string; created_at: string };
+export type StampRecord = { id: string; day: string; created_at: string; content: string };

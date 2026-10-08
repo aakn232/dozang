@@ -21,7 +21,7 @@ npm ci
 npm run dev
 npx tsc --noEmit
 npx eslint app db lib/attendance.ts
-node --experimental-strip-types --test tests/attendance.test.ts
+node --experimental-strip-types --test tests/attendance.test.mjs
 ```
 
 DB 스키마 변경 후 `npm run db:generate`로 마이그레이션을 생성합니다.

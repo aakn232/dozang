@@ -1,6 +1,6 @@
-import { koreaDay } from '../lib/attendance';
-import Attendance from './attendance';
+import { koreaDay } from '../lib/stamps';
+import StampBook from './stamp-book';
 export const dynamic = 'force-dynamic';
 export default function Page() {
-  return <Attendance initialDay={koreaDay()} />;
+  return <StampBook initialDay={koreaDay()} />;
 }

@@ -1,11 +1,15 @@
-# 도장 · dozang
+# 커플도장 · dozang
 
-로그인 없이 누구나 같은 도장판을 보는 “잘했어요!” 칭찬 사이트입니다. 도장과 칭찬 내용은 모두 서버의 Cloudflare D1 데이터베이스에 저장합니다.
+로그인 없이 기훈·빛나의 도장판을 전환하며 서로에게 “잘했어요!” 칭찬을 남기는 사이트입니다. 도장과 칭찬 내용은 모두 서버의 Cloudflare D1 데이터베이스에 저장합니다.
 
 - 사이트: https://dozang-aakn232.foggygiant.chatgpt.site
 - 코드: https://github.com/aakn232/dozang
 
 ## 기능
+- 기훈 / 빛나 전환 버튼: 각자의 달력·도장 개수·칭찬 내용 분리
+- 기존 기록은 기훈 도장판에 보존, 빛나 도장판은 별도로 시작
+- 선택한 도장판은 주소의 `?board=first`(기훈), `?board=second`(빛나)로 공유·새로고침 가능
+- 전환할 때 작성 중인 내용은 각 도장판별로 현재 화면에서 유지, 기본 보기는 달력
 - 잘한 일마다 여러 개의 칭찬 도장 적립
 - 칭찬 내용 선택 입력, 공백과 줄바꿈 포함 최대 10,000자 지원
 - 같은 공용 도장판을 모든 브라우저·기기에서 조회
@@ -49,6 +53,7 @@ npm run build
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_slow_sally_floyd.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_elite_shen.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_wealthy_lord_tyger.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0003_friendly_lorna_dane.sql
 npm start
 ```
 
@@ -57,6 +62,7 @@ npm start
 ```sh
 python3 tests/shared_board_integration.py
 python3 tests/admin_integration.py
+python3 tests/couple_integration.py
 ```
 
 스키마 변경 후 `npm run db:generate`로 새 마이그레이션을 생성합니다. 운영에 적용된 마이그레이션은 변경하지 않습니다.

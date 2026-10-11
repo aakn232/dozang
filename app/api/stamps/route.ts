@@ -1,5 +1,5 @@
 import { getDb } from '../../../db';
-import { deletionPassword, koreaDay, isValidStampDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, type StampRecord } from '../../../lib/stamps';
+import { deletionPassword, koreaDay, isValidStampDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, isBoardId, type StampRecord } from '../../../lib/stamps';
 import { isSameOrigin } from '../../../lib/request-origin';
 
 export const dynamic = 'force-dynamic';
@@ -12,12 +12,14 @@ const reply = (data: unknown, status = 200) => Response.json(data, {
 
 export async function GET(request: Request) {
   if (request.headers.get('sec-fetch-site') === 'cross-site') return reply({ error: '허용되지 않은 요청입니다.' }, 403);
+  const board = new URL(request.url).searchParams.get('board') ?? 'first';
+  if (!isBoardId(board)) return reply({ error: '도장판을 확인해 주세요.' }, 400);
   try {
     const db = getDb();
-    // The board is shared across all visitors. Preserve existing stamps; never expose visitor identifiers.
+    // Each partner has a shared board. Existing and legacy records stay on the first board.
     const results = await db.batch<StampRecord>([
-      db.prepare('SELECT id, day, created_at, content FROM praise_stamps'),
-      db.prepare("SELECT 'legacy:' || rowid AS id, day, created_at, '' AS content FROM attendance"),
+      db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE board = ?').bind(board),
+      db.prepare("SELECT 'legacy:' || rowid AS id, day, created_at, '' AS content FROM attendance WHERE ? = 'first'").bind(board),
     ]);
     const records = results.flatMap(result => result.results).sort(stampOrder);
     return reply({ records, today: koreaDay() });
@@ -29,9 +31,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return reply({ error: '허용되지 않은 요청입니다.' }, 403);
-  let body: { id?: unknown; content?: unknown; day?: unknown; adminPassword?: unknown; adminDay?: unknown };
+  let body: { id?: unknown; board?: unknown; content?: unknown; day?: unknown; adminPassword?: unknown; adminDay?: unknown };
   try { body = await request.json() as typeof body; } catch { return reply({ error: '잘못된 요청입니다.' }, 400); }
   if (!body || typeof body.id !== 'string' || !UUID.test(body.id)) return reply({ error: '잘못된 도장 번호입니다.' }, 400);
+  const board = body.board === undefined ? 'first' : body.board;
+  if (!isBoardId(board)) return reply({ error: '도장판을 확인해 주세요.' }, 400);
   if (body.content !== undefined && (typeof body.content !== 'string' || body.content.length > MAX_STAMP_CONTENT_LENGTH)) {
     return reply({ error: `칭찬 내용은 ${MAX_STAMP_CONTENT_LENGTH.toLocaleString('ko-KR')}자 이내로 입력해 주세요.` }, 400);
   }
@@ -46,9 +50,9 @@ export async function POST(request: Request) {
     }
     const db = getDb();
     const results = await db.batch([
-      db.prepare('INSERT INTO praise_stamps (id,user_id,day,created_at,content) VALUES (?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
-        .bind(body.id, SHARED_BOARD, day, now.toISOString(), content),
-      db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE id = ? AND user_id = ?').bind(body.id, SHARED_BOARD),
+      db.prepare('INSERT INTO praise_stamps (id,user_id,day,created_at,content,board) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
+        .bind(body.id, SHARED_BOARD, day, now.toISOString(), content, board),
+      db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE id = ? AND user_id = ? AND board = ?').bind(body.id, SHARED_BOARD, board),
     ]);
     const record = results[1].results[0];
     if (!record) return reply({ error: '도장 번호가 겹쳤습니다. 다시 시도해 주세요.' }, 409);
@@ -61,19 +65,21 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   if (!isSameOrigin(request)) return reply({ error: '허용되지 않은 요청입니다.' }, 403);
-  let body: { id?: unknown; password?: unknown };
+  let body: { id?: unknown; password?: unknown; board?: unknown };
   try { body = await request.json() as typeof body; } catch { return reply({ error: '잘못된 요청입니다.' }, 400); }
   if (!body || typeof body.id !== 'string' || !(UUID.test(body.id) || LEGACY_ID.test(body.id))) {
     return reply({ error: '잘못된 도장 번호입니다.' }, 400);
   }
+  const board = body.board === undefined ? 'first' : body.board;
+  if (!isBoardId(board)) return reply({ error: '도장판을 확인해 주세요.' }, 400);
   // Compute using the server's current Korean date, never a browser-supplied date.
   if (typeof body.password !== 'string' || body.password !== deletionPassword()) {
     return reply({ error: '비밀번호가 맞지 않습니다. 오늘 날짜의 비밀번호를 입력해 주세요.' }, 403);
   }
   try {
     const result = body.id.startsWith('legacy:')
-      ? await getDb().prepare('DELETE FROM attendance WHERE rowid = CAST(? AS INTEGER)').bind(body.id.slice(7)).run()
-      : await getDb().prepare('DELETE FROM praise_stamps WHERE id = ?').bind(body.id).run();
+      ? await getDb().prepare("DELETE FROM attendance WHERE rowid = CAST(? AS INTEGER) AND ? = 'first'").bind(body.id.slice(7), board).run()
+      : await getDb().prepare('DELETE FROM praise_stamps WHERE id = ? AND board = ?').bind(body.id, board).run();
     if (!result.meta.changes) return reply({ error: '도장을 찾을 수 없습니다. 이미 없어진 도장일 수 있습니다.' }, 404);
     return reply({ removedId: body.id, today: koreaDay() });
   } catch (error) {

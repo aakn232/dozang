@@ -1,15 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X } from 'lucide-react';
-import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, type StampRecord } from '../lib/stamps';
+import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X, Heart } from 'lucide-react';
+import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, BOARDS, type BoardId, type StampRecord } from '../lib/stamps';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
 };
 const formatDate = (day: string) => `${day.slice(0,4)}년 ${Number(day.slice(5,7))}월 ${Number(day.slice(8))}일`;
 
-export default function StampBook({ initialDay }: { initialDay: string }) {
+export default function StampBook({ initialDay, initialBoard }: { initialDay: string; initialBoard: BoardId }) {
+  const [board, setBoard] = useState(initialBoard);
+  const [drafts, setDrafts] = useState<Record<BoardId, string>>({ first: '', second: '' });
+  function switchBoard(next: BoardId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('board', next);
+    window.history.replaceState(null, '', url);
+    setBoard(next);
+  }
+  return <PartnerBoard key={board} initialDay={initialDay} board={board} onSwitch={switchBoard} content={drafts[board]} setContent={value => setDrafts(previous => ({...previous, [board]: value}))} />;
+}
+
+function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
+  initialDay: string; board: BoardId; onSwitch: (board: BoardId) => void;
+  content: string; setContent: (value: string) => void;
+}) {
+  const boardName = BOARDS[board];
   const [records, setRecords] = useState<StampRecord[]>([]);
   const [today, setToday] = useState(initialDay);
   const [month, setMonth] = useState(initialDay.slice(0,7));
@@ -28,7 +44,6 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   const mutationPending = useRef(false);
   const mutationRevision = useRef(0);
   const pendingAdd = useRef<{id: string; content: string; day: string} | null>(null);
-  const [content, setContent] = useState('');
   const [adminAccess, setAdminAccess] = useState<{password: string; day: string} | null>(null);
   const [stampDay, setStampDay] = useState(initialDay);
   const [adminPassword, setAdminPassword] = useState('');
@@ -43,7 +58,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
     const revision = mutationRevision.current;
     if (!quiet) { setLoading(true); setError(''); }
     try {
-      const response = await fetch('/api/stamps', { cache: 'no-store', credentials: 'omit' });
+      const response = await fetch(`/api/stamps?board=${board}`, { cache: 'no-store', credentials: 'omit' });
       const data = await response.json() as ApiResponse;
       if (!response.ok) throw new Error(data.error);
       if (revision !== mutationRevision.current) return;
@@ -53,7 +68,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
     } catch (err) {
       if (revision === mutationRevision.current) setError(err instanceof Error ? err.message : '도장을 불러오지 못했습니다.');
     } finally { if (!quiet) setLoading(false); }
-  }, []);
+  }, [board]);
 
   useEffect(() => { void Promise.resolve().then(() => load()); }, [load]);
   useEffect(() => {
@@ -76,7 +91,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
       }
       const response = await fetch('/api/stamps', {
         method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({...pendingAdd.current, ...(adminActive ? {adminPassword:adminAccess.password,adminDay:adminAccess.day} : {})}),
+        body: JSON.stringify({...pendingAdd.current, board, ...(adminActive ? {adminPassword:adminAccess.password,adminDay:adminAccess.day} : {})}),
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok) {
@@ -87,7 +102,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
       setToday(data.today); setMonth(data.record.day.slice(0,7));
       setContent(''); pendingAdd.current = null;
       setSelectedDay(''); setView('list');
-      setMessage(`${formatDate(data.record.day)}에 잘했어요! 도장 하나를 추가했어요.`);
+      setMessage(`${boardName} 도장판의 ${formatDate(data.record.day)}에 잘했어요! 도장 하나를 추가했어요.`);
     } catch (err) { setError(err instanceof Error ? err.message : '도장을 저장하지 못했습니다.'); }
     finally { setSaving(false); mutationPending.current = false; }
   }
@@ -142,7 +157,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
     try {
       const response = await fetch('/api/stamps', {
         method: 'DELETE', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: deleteTarget.id, password }),
+        body: JSON.stringify({ id: deleteTarget.id, password, board }),
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok) throw new Error(data.error);
@@ -167,15 +182,19 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
 
   return <>
     <header>
-      <button className="brand" type="button" onClick={tapLogo} aria-label="도장"><span className="brand-mark"><Stamp size={22} /></span>도장<span className="brand-en">dozang</span></button>
-      <div className="account"><span>함께 쓰는 칭찬 도장판</span></div>
+      <button className="brand" type="button" onClick={tapLogo} aria-label="커플도장"><span className="brand-mark"><Heart size={22} /></span>커플도장<span className="brand-en">dozang</span></button>
+      <div className="account"><span>기훈 & 빛나</span></div>
     </header>
     <main>
-      <div className="intro"><p className="eyebrow">OUR PRAISE STAMPS</p><h1>잘했어요!</h1><p>잘한 일과 칭찬을 적고, 도장을 함께 모아요.</p></div>
+      <div className="intro"><p className="eyebrow">OUR COUPLE STAMPS</p><h1>서로에게, 잘했어요!</h1><p>작은 노력도 기억하며, 서로의 도장을 채워요.</p></div>
+      <section className="couple-switch" aria-label="도장판 전환">
+        <div className="partner-buttons">{(Object.keys(BOARDS) as BoardId[]).map(id => <button key={id} type="button" className={board === id ? 'active' : ''} aria-pressed={board === id} disabled={saving || deleting || unlocking} onClick={() => onSwitch(id)}><Heart size={18} /><span>{BOARDS[id]} 도장판</span></button>)}</div>
+        <p aria-live="polite">지금은 <strong>{boardName}</strong>에게 도장을 찍고 있어요.</p>
+      </section>
       <div className="workspace">
         <aside>
           <section className="check-card">
-            <div className="card-top"><span>칭찬 도장</span><span className="tag">잘할 때마다</span></div>
+            <div className="card-top"><span>{boardName}에게 주는 칭찬</span><span className="tag">잘할 때마다</span></div>
             <p className="today-date">{formatDate(today)}</p>
             <div className="composer-overview"><div className="big-stamp praise-stamp"><Star size={30} strokeWidth={1.4} /><strong>잘했어요!</strong></div><div><h2>어떤 일을 잘했나요?</h2><p className="card-desc">작은 노력도 칭찬으로 남겨요.</p></div></div>
             <form className="stamp-composer" onSubmit={addStamp}>
@@ -200,7 +219,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
         </aside>
         <section className="record-card">
           <div className="record-heading">
-            <div><p className="eyebrow">STAMP COLLECTION</p><h2>함께 모은 칭찬 도장</h2></div>
+            <div><p className="eyebrow">STAMP COLLECTION</p><h2>{boardName}의 칭찬 도장</h2></div>
             <div className="view-switch" aria-label="도장 보기 방식">
               <button aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}><Grid2X2 size={16} />달력</button>
               <button aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => { setSelectedDay(''); setView('list'); }}><List size={16} />전체 도장</button>
@@ -240,7 +259,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
         </section>
       </div>
     </main>
-    <footer><span className="footer-logo">도장 <small>dozang</small></span><span>잘한 일을 오래 기억해요.</span><span>Asia/Seoul · KST</span></footer>
+    <footer><span className="footer-logo">커플도장 <small>dozang</small></span><span>둘이 함께, 잘한 일을 오래 기억해요.</span><span>Asia/Seoul · KST</span></footer>
     <dialog ref={adminDialog} className="delete-dialog admin-dialog" aria-labelledby="admin-title" onCancel={event => { if (unlocking) event.preventDefault(); else {setAdminPassword('');setAdminError('');} }}>
       <form onSubmit={unlockAdmin}>
         <div className="dialog-heading"><h2 id="admin-title">관리자 모드</h2><button type="button" onClick={closeAdminDialog} disabled={unlocking} aria-label="닫기"><X size={20} /></button></div>
@@ -255,7 +274,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
     <dialog ref={dialog} className="delete-dialog" aria-labelledby="delete-title" onCancel={event => { if (deleting) event.preventDefault(); else { setDeleteTarget(null); setPassword(''); setDeleteError(''); } }}>
       <form onSubmit={removeStamp}>
         <div className="dialog-heading"><h2 id="delete-title">도장 없애기</h2><button type="button" onClick={closeDelete} disabled={deleting} aria-label="닫기"><X size={20} /></button></div>
-        <p>{deleteTarget ? `${formatDate(deleteTarget.day)}의 “잘했어요!” 도장 하나를 없앱니다.` : '선택한 도장 하나를 없앱니다.'}</p>
+        <p>{deleteTarget ? `${boardName} 도장판에서 ${formatDate(deleteTarget.day)}의 “잘했어요!” 도장 하나를 없앱니다.` : '선택한 도장 하나를 없앱니다.'}</p>
         {deleteTarget?.content && <blockquote className="delete-content">{deleteTarget.content}</blockquote>}
         <label htmlFor="delete-password">오늘의 비밀번호</label>
         <input ref={passwordInput} id="delete-password" type="password" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} autoComplete="off" value={password} onChange={event => setPassword(event.target.value)} required disabled={deleting} aria-describedby="password-help" />

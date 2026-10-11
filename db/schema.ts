@@ -7,8 +7,9 @@ export const attendance = sqliteTable('attendance', {
 
 export const praiseStamps = sqliteTable('praise_stamps', {
   id: text('id').primaryKey(),
+  board: text('board').notNull().default('first'),
   content: text('content').notNull().default(''),
   userId: text('user_id').notNull(),
   day: text('day').notNull(),
   createdAt: text('created_at').notNull(),
-}, (t) => [index('praise_stamps_user_created_idx').on(t.userId, t.createdAt)]);
+}, (t) => [index('praise_stamps_user_created_idx').on(t.userId, t.createdAt), index('praise_stamps_board_created_idx').on(t.board, t.createdAt)]);

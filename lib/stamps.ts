@@ -1,4 +1,9 @@
 export const MAX_STAMP_CONTENT_LENGTH = 10_000;
+export const BOARDS = { first: '기훈', second: '빛나' } as const;
+export type BoardId = keyof typeof BOARDS;
+export function isBoardId(value: unknown): value is BoardId {
+  return value === 'first' || value === 'second';
+}
 
 export function koreaDay(now = new Date()): string {
   return new Intl.DateTimeFormat('sv-SE', {

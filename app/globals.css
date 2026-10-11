@@ -17,6 +17,14 @@ main{max-width:1180px;margin:0 auto;padding:32px 0 48px}
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--green);margin:0 0 8px}
 h1{font-size:32px;letter-spacing:-1px;line-height:1.3;margin:0 0 8px}
 .intro>p:last-child{margin:0;color:var(--muted)}
+.couple-switch{margin:0 0 24px;padding:16px;background:#fff;border:1px solid var(--line);border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.partner-buttons{display:flex;gap:8px;min-width:0}
+.partner-buttons button{min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 22px;border:1px solid var(--line);border-radius:10px;background:#f7f9f6;color:var(--muted);font-weight:700}
+.partner-buttons button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.partner-buttons button.active svg{fill:currentColor}
+.couple-switch p{margin:0;font-size:14px;color:var(--muted)}
+.couple-switch strong{color:var(--green)}
+@media(max-width:700px){.couple-switch{padding:12px;margin-bottom:16px;gap:10px}.partner-buttons{width:100%}.partner-buttons button{flex:1;padding:10px 8px}.couple-switch p{font-size:13px}.brand-en{display:none}}
 .workspace{display:grid;grid-template-columns:350px minmax(0,1fr);gap:24px;align-items:start}
 aside,.record-card{min-width:0}
 .check-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:24px}

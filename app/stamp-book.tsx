@@ -17,7 +17,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [view, setView] = useState('list');
+  const [view, setView] = useState('calendar');
   const [selectedDay, setSelectedDay] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<StampRecord | null>(null);
   const [password, setPassword] = useState('');

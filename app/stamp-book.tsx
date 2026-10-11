@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X, Heart } from 'lucide-react';
 import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, BOARDS, type BoardId, type StampRecord } from '../lib/stamps';
 
 type ApiResponse = {
@@ -215,7 +215,6 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
             <div><span><Stamp size={17} />모은 도장</span><strong>{loading ? '—' : records.length}<small>개</small></strong></div>
             <div><span><Star size={17} />오늘의 칭찬</span><strong>{loading ? '—' : dayCounts.get(today) ?? 0}<small>개</small></strong></div>
           </section>
-          <div className="note"><CalendarDays size={20} /><p>모든 도장과 내용은 서버에 저장돼요.<br /><span>어느 기기에서든 같은 도장판을 볼 수 있어요.</span></p></div>
         </aside>
         <section className="record-card">
           <div className="record-heading">

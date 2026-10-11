@@ -21,12 +21,19 @@ try:
     if mode not in ('worker', 'admin'):
         raise ValueError('Invalid endpoint')
     headers = {'Content-Type':'application/json', 'Connection':'close', 'Origin':base}
+    if args.get('site_access'):
+        headers['OAI-Sites-Authorization'] = 'Bearer ' + args['site_access']
     req = urllib.request.Request(base+'/api/backup/'+mode, method='POST', headers=headers, data=json.dumps(args['body']).encode())
     try:
         response = urllib.request.urlopen(req, timeout=45)
     except urllib.error.HTTPError as error:
         response = error
-    result = {'status':response.status,'data':json.loads(response.read())}
+    raw=response.read()
+    try:
+        data=json.loads(raw)
+    except (json.JSONDecodeError,UnicodeDecodeError):
+        data={'error':'Site returned a non-JSON response','content_type':response.headers.get('Content-Type'),'body_bytes':len(raw)}
+    result = {'status':response.status,'data':data}
     print(json.dumps(result, ensure_ascii=False), flush=True)
 finally:
     if settings is not None:

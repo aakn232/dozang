@@ -5,6 +5,14 @@
     "first": "3a74b724-2fb5-4bfc-8b49-81ec220b23ba",
     "second": "b58695a8-e18e-497c-9604-400425ad235b"
   },
+  "databases": {
+    "first": "6c96ead8-2e84-4753-b895-eb6832c6e478",
+    "second": "a6b4ba2c-7420-4a8b-98db-1f307b208a9d"
+  },
+  "views": {
+    "first": "view://0d3c0701-92cd-4e46-86f5-30a102461bb7",
+    "second": "view://11a28edc-e56d-4493-9c69-c8a9b7341fb2"
+  },
   "interval": "hourly",
   "timezone": "Asia/Seoul"
 }

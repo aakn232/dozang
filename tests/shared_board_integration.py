@@ -26,7 +26,11 @@ def request(method='GET', cookie=None, origin=BASE, body=None, extra=None):
     except urllib.error.HTTPError as error:
         response = error
     text = response.read().decode()
-    return response.status, json.loads(text), response.headers
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        raise AssertionError(f'Unexpected HTTP {response.status}: {text[:500]!r}; headers={dict(response.headers)}')
+    return response.status, payload, response.headers
 
 def records(cookie=None):
     status, body, headers = request(cookie=cookie)

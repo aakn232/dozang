@@ -1,5 +1,5 @@
 import { getDb } from '../../../db';
-import { deletionPassword, koreaDay, type StampRecord } from '../../../lib/stamps';
+import { deletionPassword, koreaDay, isValidStampDay, stampOrder, type StampRecord } from '../../../lib/stamps';
 import { isSameOrigin } from '../../../lib/request-origin';
 
 export const dynamic = 'force-dynamic';
@@ -19,8 +19,7 @@ export async function GET(request: Request) {
       db.prepare('SELECT id, day, created_at, content FROM praise_stamps'),
       db.prepare("SELECT 'legacy:' || rowid AS id, day, created_at, '' AS content FROM attendance"),
     ]);
-    const records = results.flatMap(result => result.results).sort((a, b) =>
-      b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    const records = results.flatMap(result => result.results).sort(stampOrder);
     return reply({ records, today: koreaDay() });
   } catch (error) {
     console.error('stamp read failed', error);
@@ -30,7 +29,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return reply({ error: '허용되지 않은 요청입니다.' }, 403);
-  let body: { id?: unknown; content?: unknown };
+  let body: { id?: unknown; content?: unknown; day?: unknown; adminPassword?: unknown; adminDay?: unknown };
   try { body = await request.json() as typeof body; } catch { return reply({ error: '잘못된 요청입니다.' }, 400); }
   if (!body || typeof body.id !== 'string' || !UUID.test(body.id)) return reply({ error: '잘못된 도장 번호입니다.' }, 400);
   if (body.content !== undefined && (typeof body.content !== 'string' || body.content.length > 300)) {
@@ -38,11 +37,17 @@ export async function POST(request: Request) {
   }
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   try {
-    const today = koreaDay();
+    const now = new Date();
+    const today = koreaDay(now);
+    const day = body.day === undefined ? today : body.day;
+    if (!isValidStampDay(day, today)) return reply({ error: '오늘 또는 지난 날짜를 선택해 주세요.' }, 400);
+    if (day !== today && (body.adminDay !== today || body.adminPassword !== deletionPassword(now))) {
+      return reply({ error: '지난 날짜에 추가하려면 오늘의 비밀번호로 관리자 모드를 활성화해 주세요.' }, 401);
+    }
     const db = getDb();
     const results = await db.batch([
       db.prepare('INSERT INTO praise_stamps (id,user_id,day,created_at,content) VALUES (?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
-        .bind(body.id, SHARED_BOARD, today, new Date().toISOString(), content),
+        .bind(body.id, SHARED_BOARD, day, now.toISOString(), content),
       db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE id = ? AND user_id = ?').bind(body.id, SHARED_BOARD),
     ]);
     const record = results[1].results[0];

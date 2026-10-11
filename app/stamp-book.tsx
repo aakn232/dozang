@@ -1,9 +1,8 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X } from 'lucide-react';
-import { type StampRecord } from '../lib/stamps';
+import { koreaDay, stampOrder, type StampRecord } from '../lib/stamps';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
@@ -28,8 +27,17 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
   const passwordInput = useRef<HTMLInputElement>(null);
   const mutationPending = useRef(false);
   const mutationRevision = useRef(0);
-  const pendingAdd = useRef<{id: string; content: string} | null>(null);
+  const pendingAdd = useRef<{id: string; content: string; day: string} | null>(null);
   const [content, setContent] = useState('');
+  const [adminAccess, setAdminAccess] = useState<{password: string; day: string} | null>(null);
+  const [stampDay, setStampDay] = useState(initialDay);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const adminDialog = useRef<HTMLDialogElement>(null);
+  const adminInput = useRef<HTMLInputElement>(null);
+  const logoTaps = useRef({ count: 0, last: 0 });
+  const adminActive = adminAccess !== null && adminAccess.day === today;
 
   const load = useCallback(async (quiet = false) => {
     const revision = mutationRevision.current;
@@ -40,6 +48,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
       if (!response.ok) throw new Error(data.error);
       if (revision !== mutationRevision.current) return;
       setRecords(data.records); setToday(data.today);
+      setAdminAccess(access => access?.day === data.today ? access : null);
       setError('');
     } catch (err) {
       if (revision === mutationRevision.current) setError(err instanceof Error ? err.message : '도장을 불러오지 못했습니다.');
@@ -61,22 +70,60 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
     mutationRevision.current++;
     setSaving(true); setMessage(''); setError('');
     try {
-      if (!pendingAdd.current || pendingAdd.current.content !== content) {
-        pendingAdd.current = { id: crypto.randomUUID(), content };
+      const day = adminActive ? stampDay : today;
+      if (!pendingAdd.current || pendingAdd.current.content !== content || pendingAdd.current.day !== day) {
+        pendingAdd.current = { id: crypto.randomUUID(), content, day };
       }
       const response = await fetch('/api/stamps', {
         method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pendingAdd.current),
+        body: JSON.stringify({...pendingAdd.current, ...(adminActive ? {adminPassword:adminAccess.password,adminDay:adminAccess.day} : {})}),
       });
       const data = await response.json() as ApiResponse;
-      if (!response.ok) throw new Error(data.error);
-      setRecords(previous => [data.record, ...previous.filter(r => r.id !== data.record.id)]);
-      setToday(data.today); setMonth(data.today.slice(0,7));
+      if (!response.ok) {
+        if (response.status === 401) setAdminAccess(null);
+        throw new Error(data.error);
+      }
+      setRecords(previous => [data.record, ...previous.filter(r => r.id !== data.record.id)].sort(stampOrder));
+      setToday(data.today); setMonth(data.record.day.slice(0,7));
       setContent(''); pendingAdd.current = null;
       setSelectedDay(''); setView('list');
-      setMessage('잘했어요! 칭찬 도장 하나를 찍었어요.');
+      setMessage(`${formatDate(data.record.day)}에 잘했어요! 도장 하나를 추가했어요.`);
     } catch (err) { setError(err instanceof Error ? err.message : '도장을 저장하지 못했습니다.'); }
     finally { setSaving(false); mutationPending.current = false; }
+  }
+
+  function tapLogo() {
+    const now = Date.now();
+    logoTaps.current.count = now - logoTaps.current.last <= 3000 ? logoTaps.current.count + 1 : 1;
+    logoTaps.current.last = now;
+    if (logoTaps.current.count < 5 || mutationPending.current || unlocking) return;
+    logoTaps.current.count = 0;
+    if (adminActive) { document.getElementById('stamp-day')?.focus(); return; }
+    setAdminPassword(''); setAdminError('');
+    adminDialog.current?.showModal(); adminInput.current?.focus();
+  }
+  function closeAdminDialog() {
+    if (unlocking) return;
+    adminDialog.current?.close(); setAdminPassword(''); setAdminError('');
+  }
+  async function unlockAdmin(event: FormEvent) {
+    event.preventDefault();
+    if (unlocking) return;
+    setUnlocking(true); setAdminError('');
+    try {
+      const response = await fetch('/api/admin', {method:'POST', credentials:'omit', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:adminPassword})});
+      const data = await response.json() as {error?:string;today:string};
+      if (!response.ok) throw new Error(data.error);
+      setToday(data.today); setStampDay(data.today);
+      setAdminAccess({password:adminPassword,day:data.today});
+      setAdminPassword(''); adminDialog.current?.close();
+      setMessage('관리자 모드가 열렸어요. 도장 날짜를 선택해 주세요.');
+    } catch (err) { setAdminError(err instanceof Error ? err.message : '관리자 모드를 열지 못했습니다.'); }
+    finally { setUnlocking(false); }
+  }
+  function leaveAdmin() {
+    setAdminAccess(null); setStampDay(today); pendingAdd.current = null;
+    setMessage('관리자 모드를 종료했어요. 오늘 날짜로 도장이 추가됩니다.');
   }
 
   function openDelete(record: StampRecord) {
@@ -120,7 +167,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
 
   return <>
     <header>
-      <Link className="brand" href="/" aria-label="도장 홈"><span className="brand-mark"><Stamp size={22} /></span>도장<span className="brand-en">dozang</span></Link>
+      <button className="brand" type="button" onClick={tapLogo} aria-label="도장"><span className="brand-mark"><Stamp size={22} /></span>도장<span className="brand-en">dozang</span></button>
       <div className="account"><span>함께 쓰는 칭찬 도장판</span></div>
     </header>
     <main>
@@ -132,6 +179,12 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
             <p className="today-date">{formatDate(today)}</p>
             <div className="composer-overview"><div className="big-stamp praise-stamp"><Star size={30} strokeWidth={1.4} /><strong>잘했어요!</strong></div><div><h2>어떤 일을 잘했나요?</h2><p className="card-desc">작은 노력도 칭찬으로 남겨요.</p></div></div>
             <form className="stamp-composer" onSubmit={addStamp}>
+              {adminActive && <section className="admin-panel" aria-label="관리자 모드">
+                <div className="admin-panel-heading"><strong>관리자 모드</strong><button type="button" onClick={leaveAdmin} disabled={saving}>종료</button></div>
+                <label htmlFor="stamp-day">도장 날짜</label>
+                <input id="stamp-day" type="date" value={stampDay} max={today} onChange={event => setStampDay(event.target.value)} required disabled={saving} />
+                <p>오늘 또는 지난 날짜에 도장을 추가할 수 있어요.</p>
+              </section>}
               <div className="content-label"><label htmlFor="stamp-content">칭찬 내용 <span>선택</span></label><span id="content-count">{content.length}/300</span></div>
               <textarea id="stamp-content" name="content" maxLength={300} rows={3} placeholder="예: 오늘 책을 끝까지 읽었어요!" value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help" />
               <p id="content-help" className="content-help">적은 내용은 도장과 함께 모두에게 보여요.</p>
@@ -179,7 +232,7 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
               <p className="history-total">{selectedDay ? '이날 모은' : '지금까지 모은'} 칭찬 도장 <b>{visibleRecords.length}개</b></p>
               <ul>{visibleRecords.map(record => <li key={record.id}>
                 <span className="history-icon"><Star size={20} /></span>
-                <div className="stamp-details"><strong>잘했어요!</strong>{record.content && <p className="stamp-content">{record.content}</p>}<time>{record.day.replaceAll('-', '. ')} · {new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}</time></div>
+                <div className="stamp-details"><strong>잘했어요!</strong>{record.content && <p className="stamp-content">{record.content}</p>}<time>{record.day.replaceAll('-', '. ')}{koreaDay(new Date(record.created_at)) === record.day ? ` · ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ` · ${formatDate(koreaDay(new Date(record.created_at)))}에 추가`}</time></div>
                 <button className="remove-stamp" disabled={saving || deleting} onClick={() => openDelete(record)} aria-label={`${formatDate(record.day)} 도장 없애기`}><Trash2 size={16} />없애기</button>
               </li>)}</ul>
             </>}
@@ -188,6 +241,17 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
       </div>
     </main>
     <footer><span className="footer-logo">도장 <small>dozang</small></span><span>잘한 일을 오래 기억해요.</span><span>Asia/Seoul · KST</span></footer>
+    <dialog ref={adminDialog} className="delete-dialog admin-dialog" aria-labelledby="admin-title" onCancel={event => { if (unlocking) event.preventDefault(); else {setAdminPassword('');setAdminError('');} }}>
+      <form onSubmit={unlockAdmin}>
+        <div className="dialog-heading"><h2 id="admin-title">관리자 모드</h2><button type="button" onClick={closeAdminDialog} disabled={unlocking} aria-label="닫기"><X size={20} /></button></div>
+        <p>비밀번호를 확인하면 지난 날짜에 도장을 추가할 수 있어요.</p>
+        <label htmlFor="admin-password">오늘의 비밀번호</label>
+        <input ref={adminInput} id="admin-password" type="password" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} autoComplete="off" value={adminPassword} onChange={event => setAdminPassword(event.target.value)} required disabled={unlocking} aria-describedby="admin-help" />
+        <p id="admin-help" className="password-help">한국 시간 기준 오늘 날짜로 계산한 비밀번호를 입력해 주세요.</p>
+        {adminError && <p className="delete-error" role="alert">{adminError}</p>}
+        <div className="dialog-actions"><button className="cancel-delete" type="button" onClick={closeAdminDialog} disabled={unlocking}>취소</button><button className="unlock-admin" type="submit" disabled={unlocking || !adminPassword}>{unlocking ? '확인 중…' : '활성화'}</button></div>
+      </form>
+    </dialog>
     <dialog ref={dialog} className="delete-dialog" aria-labelledby="delete-title" onCancel={event => { if (deleting) event.preventDefault(); else { setDeleteTarget(null); setPassword(''); setDeleteError(''); } }}>
       <form onSubmit={removeStamp}>
         <div className="dialog-heading"><h2 id="delete-title">도장 없애기</h2><button type="button" onClick={closeDelete} disabled={deleting} aria-label="닫기"><X size={20} /></button></div>

@@ -44,6 +44,7 @@ baseline = len(records())
 assert records() == records('dozang_visitor=someone-else')
 ids = [str(uuid.uuid4()) for _ in range(5)]
 text = '  책을 끝까지 읽었어요!\n정리도 했어요.  '
+text = text[:-2] + '잘' * (10_000 - len(text)) + text[-2:]
 with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
     results = list(pool.map(lambda ident: request('POST', body={'id':ident, 'content':text}), ids))
 assert all(result[0] == 200 for result in results), results
@@ -56,7 +57,7 @@ for cookie in (None, 'other_device=new', 'dozang_visitor=admin'):
 status, data, _ = request('POST', body={'id':ids[0], 'content':'덮어쓰기 시도'})
 assert status == 200 and data['alreadyAdded'] and data['record']['content'] == text.strip()
 assert len(records()) == baseline + 5
-assert request('POST', body={'id':str(uuid.uuid4()),'content':'가'*301})[0] == 400
+assert request('POST', body={'id':str(uuid.uuid4()),'content':'가'*10_001})[0] == 400
 assert request('POST', body={'id':str(uuid.uuid4()),'content':123})[0] == 400
 blank = str(uuid.uuid4())
 assert request('POST', body={'id':blank})[1]['record']['content'] == ''
@@ -86,4 +87,4 @@ assert request('DELETE',body={'id':legacy_id,'password':password})[0] == 200
 for ident in ids[1:] + [blank]:
     assert request('DELETE',body={'id':ident,'password':password})[0] == 200
 assert len(records()) == baseline
-print('PASS: shared board across cookies/devices, no cookies issued, server content storage, retries, 300-character validation, password deletion, historical records, cross-origin checks')
+print('PASS: shared board across cookies/devices, no cookies issued, server content storage, retries, 10,000-character boundary validation, password deletion, historical records, cross-origin checks')

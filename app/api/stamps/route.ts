@@ -1,5 +1,5 @@
 import { getDb } from '../../../db';
-import { deletionPassword, koreaDay, isValidStampDay, stampOrder, type StampRecord } from '../../../lib/stamps';
+import { deletionPassword, koreaDay, isValidStampDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, type StampRecord } from '../../../lib/stamps';
 import { isSameOrigin } from '../../../lib/request-origin';
 
 export const dynamic = 'force-dynamic';
@@ -32,8 +32,8 @@ export async function POST(request: Request) {
   let body: { id?: unknown; content?: unknown; day?: unknown; adminPassword?: unknown; adminDay?: unknown };
   try { body = await request.json() as typeof body; } catch { return reply({ error: '잘못된 요청입니다.' }, 400); }
   if (!body || typeof body.id !== 'string' || !UUID.test(body.id)) return reply({ error: '잘못된 도장 번호입니다.' }, 400);
-  if (body.content !== undefined && (typeof body.content !== 'string' || body.content.length > 300)) {
-    return reply({ error: '칭찬 내용은 300자 이내로 입력해 주세요.' }, 400);
+  if (body.content !== undefined && (typeof body.content !== 'string' || body.content.length > MAX_STAMP_CONTENT_LENGTH)) {
+    return reply({ error: `칭찬 내용은 ${MAX_STAMP_CONTENT_LENGTH.toLocaleString('ko-KR')}자 이내로 입력해 주세요.` }, 400);
   }
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   try {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X } from 'lucide-react';
-import { koreaDay, stampOrder, type StampRecord } from '../lib/stamps';
+import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, type StampRecord } from '../lib/stamps';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
@@ -185,8 +185,8 @@ export default function StampBook({ initialDay }: { initialDay: string }) {
                 <input id="stamp-day" type="date" value={stampDay} max={today} onChange={event => setStampDay(event.target.value)} required disabled={saving} />
                 <p>오늘 또는 지난 날짜에 도장을 추가할 수 있어요.</p>
               </section>}
-              <div className="content-label"><label htmlFor="stamp-content">칭찬 내용 <span>선택</span></label><span id="content-count">{content.length}/300</span></div>
-              <textarea id="stamp-content" name="content" maxLength={300} rows={3} placeholder="예: 오늘 책을 끝까지 읽었어요!" value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help" />
+              <div className="content-label"><label htmlFor="stamp-content">칭찬 내용 <span>선택</span></label><span id="content-count">{content.length.toLocaleString('ko-KR')}/{MAX_STAMP_CONTENT_LENGTH.toLocaleString('ko-KR')}</span></div>
+              <textarea id="stamp-content" name="content" maxLength={MAX_STAMP_CONTENT_LENGTH} rows={3} placeholder="예: 오늘 책을 끝까지 읽었어요!" value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help" />
               <p id="content-help" className="content-help">적은 내용은 도장과 함께 모두에게 보여요.</p>
               <button className="primary" type="submit" disabled={loading || saving || deleting}><Stamp size={19} />{saving ? '도장 찍는 중…' : loading ? '도장 확인 중…' : '잘했어요! 도장 찍기'}</button>
             </form>

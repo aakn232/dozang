@@ -1,3 +1,5 @@
+export const MAX_STAMP_CONTENT_LENGTH = 10_000;
+
 export function koreaDay(now = new Date()): string {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',

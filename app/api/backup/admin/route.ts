@@ -17,14 +17,15 @@ export async function POST(request:Request) {
   try {
     if(body.action==='backfill')return reply({queued:await backfill()});
     if(body.action==='status') {
-      const [stats,deleted]=await db.batch([
+      const [stats,deleted,runner]=await db.batch([
         db.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN a.revision=a.backed_up_revision THEN 1 ELSE 0 END) AS completed,
           SUM(CASE WHEN j.id IS NOT NULL THEN 1 ELSE 0 END) AS pending,
           SUM(CASE WHEN j.last_error IS NOT NULL THEN 1 ELSE 0 END) AS failed, MAX(a.backed_up_at) AS last_success,
           MIN(j.queued_at) AS oldest_pending FROM stamp_archive a LEFT JOIN backup_jobs j ON a.id=j.id WHERE a.board=?`).bind(board),
         db.prepare('SELECT id,day,content,deleted_at FROM stamp_archive WHERE board=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 100').bind(board),
+        db.prepare('SELECT last_run_at,completed,failed FROM backup_runner_status WHERE id=1'),
       ]);
-      return reply({stats:stats.results[0],deleted:deleted.results});
+      return reply({stats:stats.results[0],deleted:deleted.results,runner:runner.results[0]||null});
     }
     if(body.action==='export') {
       const rows=await db.prepare('SELECT * FROM stamp_archive WHERE board=? ORDER BY day,created_at,id').bind(board).all<ArchiveRecord>();

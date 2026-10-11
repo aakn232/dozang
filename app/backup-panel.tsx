@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BOARDS, type BoardId } from '../lib/stamps';
 import type { BackupBundle } from '../lib/backup-format';
-type Status = {stats:{completed:number;pending:number;failed:number;last_success:string|null;oldest_pending:string|null};deleted:{id:string;day:string;content:string;deleted_at:string}[]};
+type Status = {stats:{completed:number;pending:number;failed:number;last_success:string|null;oldest_pending:string|null};runner:{last_run_at:string;completed:number;failed:number}|null;deleted:{id:string;day:string;content:string;deleted_at:string}[]};
 const formatTime=(value:string|null)=>value?new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',dateStyle:'short',timeStyle:'short'}).format(new Date(value)):'아직 없음';
 
 export default function BackupPanel({board,password,onRestore}:{board:BoardId;password:string;onRestore:()=>Promise<void>}) {
   const [status,setStatus]=useState<Status|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
   const [preview,setPreview]=useState<{missing:number;skipped:number;deleted:number}|null>(null);
   const bundle=useRef<BackupBundle|null>(null),fileInput=useRef<HTMLInputElement>(null);
+  const runnerStale=!!status?.runner&&Date.now()-Date.parse(status.runner.last_run_at)>3*60*60*1000;
   const call=useCallback(async<T=unknown,>(action:string,extra:Record<string,unknown>={}):Promise<T>=>{
     const response=await fetch('/api/backup/admin',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,board,password,...extra})});
     const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'백업 작업을 처리하지 못했습니다.');return data as T;
@@ -23,7 +24,8 @@ export default function BackupPanel({board,password,onRestore}:{board:BoardId;pa
   }
   return <section className="backup-panel" aria-label="백업과 복원">
     <h3>백업과 복원</h3>
-    <p>{BOARDS[board]}의 기록을 Notion에 1시간마다 백업해요.</p>
+    <p>{status?.runner?(runnerStale?'최근 3시간 동안 자동 백업이 실행되지 않았어요. GitHub 작업 상태를 확인해 주세요.':'GitHub 자동 백업이 연결되어 있어요. 매시간 실행하도록 설정되어 있어요.'):'GitHub 자동 백업 연결을 준비 중이에요. 기존 백업은 보관되어 있어요.'}</p>
+    {status?.runner&&<p>최근 자동 실행: {formatTime(status.runner.last_run_at)}{status.runner.failed>0?' · 재시도할 기록이 있어요.':''}</p>}
     {status&&<><dl><div><dt>백업 완료</dt><dd>{status.stats.completed||0}개</dd></div><div><dt>대기</dt><dd>{status.stats.pending||0}개</dd></div><div><dt>오류</dt><dd>{status.stats.failed||0}개</dd></div></dl><p>최근 완료: {formatTime(status.stats.last_success)}</p></>}
     <div className="backup-actions"><button type="button" disabled={busy} onClick={()=>void refresh()}>상태 새로고침</button><button type="button" disabled={busy} onClick={()=>void download()}>백업 파일 저장</button></div>
     <details><summary>삭제한 도장 복원</summary><p>삭제한 도장은 여기에서 복원할 수 있어요.</p>

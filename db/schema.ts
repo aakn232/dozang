@@ -27,7 +27,7 @@ export const stampArchive = sqliteTable('stamp_archive', {
   backedUpAt: text('backed_up_at'),
 }, t => [index('stamp_archive_board_idx').on(t.board, t.day)]);
 
-// Tickets are visible only to the owner's Sites database tools, never public responses.
+// Tickets are available only through owner tools or the authenticated backup runner.
 export const backupJobs = sqliteTable('backup_jobs', {
   id: text('id').primaryKey(),
   revision: text('revision').notNull(),
@@ -37,4 +37,11 @@ export const backupJobs = sqliteTable('backup_jobs', {
   leaseUntil: text('lease_until'),
   attempts: integer('attempts').notNull().default(0),
   lastError: text('last_error'),
+});
+
+export const backupRunnerStatus = sqliteTable('backup_runner_status', {
+  id: integer('id').primaryKey(),
+  lastRunAt: text('last_run_at').notNull(),
+  completed: integer('completed').notNull(),
+  failed: integer('failed').notNull(),
 });

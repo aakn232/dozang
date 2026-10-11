@@ -1,6 +1,7 @@
 import { getDb } from '../../../../db';
 import { backupRecord, notionContent } from '../../../../lib/backup-format';
 import type { ArchiveRecord } from '../../../../lib/backup-store';
+import { isBackupRunner } from '../../../../lib/backup-runner-auth';
 
 export const dynamic='force-dynamic';
 const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -10,8 +11,22 @@ const NOTION_UUID=/^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]
 // Tickets are never available from public stamp APIs, backup status, exports, or client code.
 export async function POST(request:Request) {
   if(request.headers.get('sec-fetch-site')==='cross-site')return reply({error:'허용되지 않은 요청입니다.'},403);
-  let body:{id?:unknown;ticket?:unknown;action?:unknown;lease?:unknown;page_id?:unknown;hash?:unknown;error?:unknown};
+  let body:{id?:unknown;ticket?:unknown;action?:unknown;lease?:unknown;page_id?:unknown;hash?:unknown;error?:unknown;after?:unknown;completed?:unknown;failed?:unknown};
   try { body=await request.json(); } catch {return reply({error:'잘못된 요청입니다.'},400);}
+  if(body && (body.action==='list' || body.action==='report')) {
+    if(!await isBackupRunner(request))return reply({error:'인증 실패'},401);
+    const db=getDb();
+    if(body.action==='list') {
+      if(body.after!==undefined && (typeof body.after!=='string'||body.after.length>100))return reply({error:'잘못된 커서'},400);
+      const rows=await db.prepare('SELECT id,revision,ticket,lease_until FROM backup_jobs WHERE id>? ORDER BY id LIMIT 26').bind(body.after||'').all();
+      return reply({jobs:rows.results.slice(0,25),next_cursor:rows.results.length>25?rows.results[24].id:null});
+    }
+    if(!Number.isSafeInteger(body.completed)||!Number.isSafeInteger(body.failed)||Number(body.completed)<0||Number(body.failed)<0)return reply({error:'잘못된 실행 결과'},400);
+    const now=new Date().toISOString();
+    await db.prepare(`INSERT INTO backup_runner_status (id,last_run_at,completed,failed) VALUES (1,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET last_run_at=excluded.last_run_at,completed=excluded.completed,failed=excluded.failed`).bind(now,body.completed,body.failed).run();
+    return reply({recorded_at:now});
+  }
   if(!body||typeof body.id!=='string'||typeof body.ticket!=='string'||!/^[a-f0-9]{64}$/.test(body.ticket))return reply({error:'인증 실패'},401);
   const db=getDb(), now=new Date().toISOString();
   try {

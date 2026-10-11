@@ -13,6 +13,7 @@
     "first": "view://0d3c0701-92cd-4e46-86f5-30a102461bb7",
     "second": "view://11a28edc-e56d-4493-9c69-c8a9b7341fb2"
   },
+  "engine": "github-actions",
   "interval": "hourly",
   "timezone": "Asia/Seoul"
 }

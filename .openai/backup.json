@@ -1,0 +1,10 @@
+{
+  "site_url": "https://dozang-aakn232.foggygiant.chatgpt.site",
+  "root_page_id": "3f6acaa3-fa84-81d5-8b4b-fd6a6c10fa01",
+  "data_sources": {
+    "first": "3a74b724-2fb5-4bfc-8b49-81ec220b23ba",
+    "second": "b58695a8-e18e-497c-9604-400425ad235b"
+  },
+  "interval": "hourly",
+  "timezone": "Asia/Seoul"
+}

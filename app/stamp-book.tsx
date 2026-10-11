@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X, Heart } from 'lucide-react';
 import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, BOARDS, type BoardId, type StampRecord } from '../lib/stamps';
+import BackupPanel from './backup-panel';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
@@ -215,6 +216,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
             <div><span><Stamp size={17} />모은 도장</span><strong>{loading ? '—' : records.length}<small>개</small></strong></div>
             <div><span><Star size={17} />오늘의 칭찬</span><strong>{loading ? '—' : dayCounts.get(today) ?? 0}<small>개</small></strong></div>
           </section>
+          {adminActive&&<BackupPanel board={board} password={adminAccess.password} onRestore={()=>load(true)} />}
         </aside>
         <section className="record-card">
           <div className="record-heading">
@@ -273,7 +275,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
     <dialog ref={dialog} className="delete-dialog" aria-labelledby="delete-title" onCancel={event => { if (deleting) event.preventDefault(); else { setDeleteTarget(null); setPassword(''); setDeleteError(''); } }}>
       <form onSubmit={removeStamp}>
         <div className="dialog-heading"><h2 id="delete-title">도장 없애기</h2><button type="button" onClick={closeDelete} disabled={deleting} aria-label="닫기"><X size={20} /></button></div>
-        <p>{deleteTarget ? `${boardName} 도장판에서 ${formatDate(deleteTarget.day)}의 “잘했어요!” 도장 하나를 없앱니다.` : '선택한 도장 하나를 없앱니다.'}</p>
+        <p>{deleteTarget ? `${boardName} 도장판에서 ${formatDate(deleteTarget.day)}의 “잘했어요!” 도장 하나를 없앱니다.` : '선택한 도장 하나를 없앱니다.'} 삭제한 도장은 관리자 모드에서 복원할 수 있어요.</p>
         {deleteTarget?.content && <blockquote className="delete-content">{deleteTarget.content}</blockquote>}
         <label htmlFor="delete-password">오늘의 비밀번호</label>
         <input ref={passwordInput} id="delete-password" type="password" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} autoComplete="off" value={password} onChange={event => setPassword(event.target.value)} required disabled={deleting} aria-describedby="password-help" />

@@ -1,6 +1,7 @@
 import { getDb } from '../../../db';
 import { deletionPassword, koreaDay, isValidStampDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, isBoardId, type StampRecord } from '../../../lib/stamps';
 import { isSameOrigin } from '../../../lib/request-origin';
+import { snapshot, queue } from '../../../lib/backup-store';
 
 export const dynamic = 'force-dynamic';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -50,11 +51,13 @@ export async function POST(request: Request) {
     }
     const db = getDb();
     const results = await db.batch([
-      db.prepare('INSERT INTO praise_stamps (id,user_id,day,created_at,content,board) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
-        .bind(body.id, SHARED_BOARD, day, now.toISOString(), content, board),
+      db.prepare('INSERT INTO praise_stamps (id,user_id,day,created_at,content,board) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM stamp_archive WHERE id=? AND deleted_at IS NOT NULL) ON CONFLICT(id) DO NOTHING')
+        .bind(body.id, SHARED_BOARD, day, now.toISOString(), content, board, body.id),
+      snapshot(db, body.id, crypto.randomUUID()),
+      queue(db, body.id, null),
       db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE id = ? AND user_id = ? AND board = ?').bind(body.id, SHARED_BOARD, board),
     ]);
-    const record = results[1].results[0];
+    const record = results[3].results[0];
     if (!record) return reply({ error: '도장 번호가 겹쳤습니다. 다시 시도해 주세요.' }, 409);
     return reply({ record, today, alreadyAdded: results[0].meta.changes === 0 });
   } catch (error) {
@@ -77,9 +80,19 @@ export async function DELETE(request: Request) {
     return reply({ error: '비밀번호가 맞지 않습니다. 오늘 날짜의 비밀번호를 입력해 주세요.' }, 403);
   }
   try {
-    const result = body.id.startsWith('legacy:')
-      ? await getDb().prepare("DELETE FROM attendance WHERE rowid = CAST(? AS INTEGER) AND ? = 'first'").bind(body.id.slice(7), board).run()
-      : await getDb().prepare('DELETE FROM praise_stamps WHERE id = ? AND board = ?').bind(body.id, board).run();
+    const db = getDb(), revision=crypto.randomUUID(), now=new Date().toISOString();
+    const sourceCheck = body.id.startsWith('legacy:')
+      ? "EXISTS (SELECT 1 FROM attendance WHERE rowid=CAST(substr(stamp_archive.id,8) AS INTEGER))"
+      : 'EXISTS (SELECT 1 FROM praise_stamps WHERE id=stamp_archive.id AND board=stamp_archive.board)';
+    const results = await db.batch([
+      snapshot(db,body.id,revision),
+      db.prepare(`UPDATE stamp_archive SET deleted_at=?,revision=? WHERE id=? AND board=? AND deleted_at IS NULL AND ${sourceCheck}`).bind(now,revision,body.id,board),
+      queue(db,body.id,revision,now),
+      body.id.startsWith('legacy:')
+        ? db.prepare("DELETE FROM attendance WHERE rowid = CAST(? AS INTEGER) AND ? = 'first'").bind(body.id.slice(7),board)
+        : db.prepare('DELETE FROM praise_stamps WHERE id = ? AND board = ?').bind(body.id,board),
+    ]);
+    const result=results[3];
     if (!result.meta.changes) return reply({ error: '도장을 찾을 수 없습니다. 이미 없어진 도장일 수 있습니다.' }, 404);
     return reply({ removedId: body.id, today: koreaDay() });
   } catch (error) {

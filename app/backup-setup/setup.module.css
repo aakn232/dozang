@@ -1,0 +1,5 @@
+.setup a { color: #723a57; text-decoration: underline; text-underline-offset: 3px; }
+.setup ol { list-style: decimal; margin: 20px 0; }
+.setup li { display: list-item; margin-bottom: 18px; }
+.setup p { margin: 16px 0; }
+.setup textarea { padding: 12px; border: 1px solid #ba9eac; border-radius: 8px; background: white; }

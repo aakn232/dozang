@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import styles from './setup.module.css';
 const secrets='https://github.com/aakn232/dozang/settings/secrets/actions';
 export default function Setup() {
   const [secret,setSecret]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false),[busy,setBusy]=useState(false);
@@ -12,7 +13,7 @@ export default function Setup() {
       try{await navigator.clipboard.writeText(data.secret);setCopied(true);}catch{/* Manual copy is available below. */}
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
-  return <main style={{maxWidth:620,margin:'0 auto',padding:'28px 20px',lineHeight:1.8,overflowWrap:'anywhere'}}>
+  return <main className={styles.setup} style={{maxWidth:620,margin:'0 auto',padding:'28px 20px',lineHeight:1.8,overflowWrap:'anywhere'}}>
     <a href="/">← 커플도장</a><h1 style={{fontSize:26,marginTop:20}}>자동 백업 연결</h1>
     <p>백업은 GitHub 서버에서 실행해요. ChatGPT 예약이나 열린 브라우저가 필요하지 않아요. 이 설정 화면만 소유자 로그인으로 보호해요.</p>
     <ol style={{paddingLeft:24}}>

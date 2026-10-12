@@ -2,6 +2,8 @@ import { getDb } from '../../../db';
 import { deletionPassword, koreaDay, isValidStampDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, isBoardId, type StampRecord } from '../../../lib/stamps';
 import { isSameOrigin } from '../../../lib/request-origin';
 import { snapshot, queue } from '../../../lib/backup-store';
+import { pushEventStatements } from '../../../lib/push-queue';
+import { dispatchPhoneNotifications } from '../../../lib/push-server';
 
 export const dynamic = 'force-dynamic';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -56,9 +58,11 @@ export async function POST(request: Request) {
       snapshot(db, body.id, crypto.randomUUID()),
       queue(db, body.id, null),
       db.prepare('SELECT id, day, created_at, content FROM praise_stamps WHERE id = ? AND user_id = ? AND board = ?').bind(body.id, SHARED_BOARD, board),
+      ...pushEventStatements(db,body.id,board,now.toISOString()),
     ]);
     const record = results[3].results[0];
     if (!record) return reply({ error: '도장 번호가 겹쳤습니다. 다시 시도해 주세요.' }, 409);
+    await dispatchPhoneNotifications();
     return reply({ record, today, alreadyAdded: results[0].meta.changes === 0 });
   } catch (error) {
     console.error('stamp write failed', error);

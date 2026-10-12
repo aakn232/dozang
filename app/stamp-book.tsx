@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ChevronLeft, ChevronRight, Stamp, Grid2X2, List, RefreshCw, Trash2, X, Plus, ArrowUpRight } from 'lucide-react';
 import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, BOARDS, type BoardId, type StampRecord } from '../lib/stamps';
 import BackupPanel from './backup-panel';
+import PushSettings from './push-settings';
 
 type ApiResponse = {
   error?: string; records: StampRecord[]; record: StampRecord; today: string; alreadyAdded?: boolean;
@@ -16,6 +17,7 @@ export default function StampBook({ initialDay, initialBoard }: { initialDay: st
   function switchBoard(next: BoardId) {
     const url = new URL(window.location.href);
     url.searchParams.set('board', next);
+    url.searchParams.delete('stamp');
     window.history.replaceState(null, '', url);
     setBoard(next);
   }
@@ -59,6 +61,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
   const adminDialog = useRef<HTMLDialogElement>(null);
   const adminInput = useRef<HTMLInputElement>(null);
   const logoTaps = useRef({ count: 0, last: 0 });
+  const notificationOpened=useRef(false);
   const adminActive = adminAccess !== null && adminAccess.day === today;
 
   const load = useCallback(async (quiet = false) => {
@@ -78,6 +81,15 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
   }, [board]);
 
   useEffect(() => { void Promise.resolve().then(() => load()); }, [load]);
+  useEffect(()=>{
+    if(loading||notificationOpened.current)return;
+    const id=new URL(window.location.href).searchParams.get('stamp');
+    const record=records.find(r=>r.id===id);
+    if(!record)return;
+    notificationOpened.current=true;setMonth(record.day.slice(0,7));setSelectedDay(record.day);setView('calendar');
+    const timer=setTimeout(()=>document.getElementById('stamp-'+record.id)?.scrollIntoView({block:'center'}),100);
+    return()=>clearTimeout(timer);
+  },[records,loading]);
   useEffect(() => {
     const sync = () => { if (document.visibilityState === 'visible' && !mutationPending.current) void load(true); };
     document.addEventListener('visibilitychange', sync);
@@ -213,6 +225,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
         <div><p className="intro-note">우리 둘의 칭찬 노트</p><h1 id="book-title">서로에게, <span>잘했어요!</span></h1><p className="intro-description">작은 노력도, 다정한 마음도 오래 기억해요.</p></div>
         <div className="intro-seal" aria-hidden="true"><Seal /></div>
       </section>
+      <PushSettings board={board}/>
       <div className="book-toolbar">
         <section className="couple-switch" aria-label="도장판 전환">
           {(Object.keys(BOARDS) as BoardId[]).map(id => <button key={id} type="button" className={board === id ? 'active' : ''} aria-pressed={board === id} disabled={saving || deleting || unlocking} onClick={() => onSwitch(id)}><span className={`partner-dot dot-${id}`} aria-hidden="true" />{BOARDS[id]}의 도장판</button>)}
@@ -244,7 +257,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
           </section>}
           <section className="detail-pane" aria-labelledby="detail-title">
             <div className="detail-heading"><div><p className="detail-kicker">{view === 'calendar' ? '이날의 칭찬' : '차곡차곡 모은 칭찬'}</p><h3 id="detail-title">{view === 'calendar' ? `${Number(selectedDay.slice(5,7))}월 ${Number(selectedDay.slice(8))}일` : '우리의 칭찬 기록'}{view === 'calendar' && selectedDay === today && <span>오늘</span>}</h3></div><span className="detail-count">{visibleRecords.length}개</span></div>
-            {visibleRecords.length === 0 ? <div className="empty"><span className="empty-seal" aria-hidden="true"><Seal /></span><h4>{records.length === 0 ? '첫 칭찬을 기다리는 중' : '아직 찍힌 도장이 없어요'}</h4><p>{records.length === 0 ? '고마웠던 순간, 잘해낸 일을\n도장 하나로 남겨 주세요.' : '매일 채우지 않아도 괜찮아요.\n칭찬하고 싶은 순간에 찍어 주세요.'}</p>{(selectedDay === today || view === 'list') && <button className="text-action" type="button" onClick={() => {setStampDay(today);openComposer();}}>오늘의 칭찬 남기기<ArrowUpRight size={16} /></button>}</div> : <ul className="stamp-history">{visibleRecords.map(record => <li key={record.id} className={celebration === record.id ? 'fresh-stamp' : ''}>
+            {visibleRecords.length === 0 ? <div className="empty"><span className="empty-seal" aria-hidden="true"><Seal /></span><h4>{records.length === 0 ? '첫 칭찬을 기다리는 중' : '아직 찍힌 도장이 없어요'}</h4><p>{records.length === 0 ? '고마웠던 순간, 잘해낸 일을\n도장 하나로 남겨 주세요.' : '매일 채우지 않아도 괜찮아요.\n칭찬하고 싶은 순간에 찍어 주세요.'}</p>{(selectedDay === today || view === 'list') && <button className="text-action" type="button" onClick={() => {setStampDay(today);openComposer();}}>오늘의 칭찬 남기기<ArrowUpRight size={16} /></button>}</div> : <ul className="stamp-history">{visibleRecords.map(record => <li key={record.id} id={'stamp-'+record.id} className={celebration === record.id ? 'fresh-stamp' : ''}>
               <div className="record-top"><span className="record-seal" aria-hidden="true"><Seal small /></span><div><strong>잘했어요!</strong><time dateTime={record.created_at}>{view === 'list' ? `${record.day.replaceAll('-', '. ')} · ` : ''}{koreaDay(new Date(record.created_at)) === record.day ? new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at)) : `${formatDate(koreaDay(new Date(record.created_at)))}에 추가`}</time></div><button type="button" className="remove-stamp" disabled={saving || deleting} onClick={() => openDelete(record)} aria-label={`${formatDate(record.day)} 도장 없애기`}><Trash2 size={16} /></button></div>
               {record.content ? <p className="stamp-content">{record.content}</p> : <p className="wordless-stamp">말 대신 도장으로 전한 칭찬</p>}
             </li>)}</ul>}

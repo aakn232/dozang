@@ -6,6 +6,7 @@
 - 코드: https://github.com/aakn232/dozang
 
 ## 기능
+- 도장판별 휴대폰 푸시 알림: 한 번 허용하면 사이트가 닫혀 있어도 수신, 알림 끄기·테스트 알림 지원
 - GitHub Actions가 Notion API로 기훈·빛나별 독립 백업, 삭제 원문 보존, 실패 재시도 및 관리자 백업 상태 표시
 - 관리자 모드에서 삭제 도장 복원, JSON 백업 다운로드 및 미리보기 후 복원
 - 기훈 / 빛나 전환 버튼: 각자의 달력·도장 개수·칭찬 내용 분리
@@ -58,6 +59,7 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0003_friendly_lorna_dane.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0004_keen_hammerhead.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0005_volatile_grandmaster.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0006_narrow_talkback.sql
 npm start
 ```
 
@@ -73,6 +75,8 @@ python3 tests/backup_integration.py
 스키마 변경 후 `npm run db:generate`로 새 마이그레이션을 생성합니다. 운영에 적용된 마이그레이션은 변경하지 않습니다.
 
 ## 호스팅
+휴대폰 알림은 선택한 도장판의 ‘새 칭찬 알림’에서 허용합니다. 아이폰은 iOS 16.4 이상에서 Safari의 공유 → 홈 화면에 추가한 앱으로 열어야 합니다. Android는 Chrome 등 Web Push 지원 브라우저에서 허용합니다. [알림 운영 문서](docs/phone-notifications.md)에 저장·재시도·해제 동작을 기록했습니다.
+
 Notion 백업은 GitHub Actions의 시간별 작업이 Notion REST API를 직접 호출합니다. ChatGPT 예약 작업이나 연결된 앱 도구를 사용하지 않습니다. 사이트 소유자는 `/backup-setup`에서 한 번 연결 설정을 진행합니다. 자동 실행·인증·재시도·복원 절차와 GitHub 예약의 제한은 [Notion 백업 운영 문서](docs/notion-backup.md)를 따릅니다. Notion 토큰은 GitHub Secrets에만 등록하며 사이트 방문자는 로그인할 필요가 없습니다. 삭제한 도장은 서버 archive와 Notion에 보존되며 관리자 모드에서 복원할 수 있습니다.
 
 Sites / Cloudflare Workers + D1에서 운영하므로 개인 서버나 컴퓨터를 켜 둘 필요가 없습니다. 기존 `.openai/hosting.json`의 project_id와 D1 바인딩을 유지하여 배포합니다. GitHub는 코드 저장소이며 push만으로 자동 배포되는 구성은 아닙니다.

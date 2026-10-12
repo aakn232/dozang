@@ -45,3 +45,16 @@ export const backupRunnerStatus = sqliteTable('backup_runner_status', {
   completed: integer('completed').notNull(),
   failed: integer('failed').notNull(),
 });
+
+export const pushSubscriptions = sqliteTable('push_subscriptions', {
+  id:text('id').primaryKey(),endpoint:text('endpoint').notNull(),p256dh:text('p256dh').notNull(),auth:text('auth').notNull(),
+  firstEnabled:integer('first_enabled').notNull().default(0),secondEnabled:integer('second_enabled').notNull().default(0),
+  createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),lastTestAt:text('last_test_at'),
+});
+export const pushEvents=sqliteTable('push_events', {
+  stampId:text('stamp_id').primaryKey(),board:text('board').notNull(),createdAt:text('created_at').notNull(),expiresAt:text('expires_at').notNull(),
+});
+export const pushDeliveries=sqliteTable('push_deliveries', {
+  stampId:text('stamp_id').notNull(),subscriptionId:text('subscription_id').notNull(),nextAttemptAt:text('next_attempt_at').notNull(),
+  attempts:integer('attempts').notNull().default(0),leaseToken:text('lease_token'),leaseUntil:text('lease_until'),sentAt:text('sent_at'),lastError:text('last_error'),
+},t=>[primaryKey({columns:[t.stampId,t.subscriptionId]}),index('push_deliveries_due_idx').on(t.nextAttemptAt)]);

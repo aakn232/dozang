@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '34 * * * *'
   workflow_dispatch:
+    inputs:
+      verify_existing:
+        description: Recheck existing backups without changing original stamps
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,4 +32,5 @@ jobs:
         env:
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
           DOZANG_BACKUP_CONFIG: ${{ secrets.DOZANG_BACKUP_CONFIG }}
+          NOTION_VERIFY_EXISTING: ${{ inputs.verify_existing }}
         run: node --experimental-strip-types scripts/notion-backup.mjs

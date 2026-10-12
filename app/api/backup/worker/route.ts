@@ -2,6 +2,7 @@ import { getDb } from '../../../../db';
 import { backupRecord, notionContent } from '../../../../lib/backup-format';
 import type { ArchiveRecord } from '../../../../lib/backup-store';
 import { isBackupRunner } from '../../../../lib/backup-runner-auth';
+import { newTicket } from '../../../../lib/backup-store';
 
 export const dynamic='force-dynamic';
 const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -13,9 +14,19 @@ export async function POST(request:Request) {
   if(request.headers.get('sec-fetch-site')==='cross-site')return reply({error:'허용되지 않은 요청입니다.'},403);
   let body:{id?:unknown;ticket?:unknown;action?:unknown;lease?:unknown;page_id?:unknown;hash?:unknown;error?:unknown;after?:unknown;completed?:unknown;failed?:unknown};
   try { body=await request.json(); } catch {return reply({error:'잘못된 요청입니다.'},400);}
-  if(body && (body.action==='list' || body.action==='report')) {
+  if(body && (body.action==='list' || body.action==='report' || body.action==='resync')) {
     if(!await isBackupRunner(request))return reply({error:'인증 실패'},401);
     const db=getDb();
+    if(body.action==='resync') {
+      if(body.after!==undefined && (typeof body.after!=='string'||body.after.length>100))return reply({error:'잘못된 커서'},400);
+      const rows=await db.prepare('SELECT id,revision FROM stamp_archive WHERE id>? ORDER BY id LIMIT 26').bind(body.after||'').all<{id:string;revision:string}>();
+      const page=rows.results.slice(0,25),now=new Date().toISOString();
+      // Recheck retained snapshots without changing their revision, content or prior backup receipt.
+      // Existing queued/leased work remains untouched.
+      const results=page.length?await db.batch(page.map(r=>db.prepare(`INSERT OR IGNORE INTO backup_jobs (id,revision,ticket,queued_at)
+        SELECT id,revision,?,? FROM stamp_archive WHERE id=? AND revision=?`).bind(newTicket(),now,r.id,r.revision))):[];
+      return reply({queued:results.reduce((n,r)=>n+(r.meta.changes||0),0),next_cursor:rows.results.length>25?page[24].id:null});
+    }
     if(body.action==='list') {
       if(body.after!==undefined && (typeof body.after!=='string'||body.after.length>100))return reply({error:'잘못된 커서'},400);
       const rows=await db.prepare('SELECT id,revision,ticket,lease_until FROM backup_jobs WHERE id>? ORDER BY id LIMIT 26').bind(body.after||'').all();

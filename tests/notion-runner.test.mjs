@@ -11,6 +11,7 @@ class FakeRunner extends BackupRunner {
   constructor(claim){super({config,connection:{site_url:config.site_url,runner_key:'a'.repeat(64),site_access:'test'},notionToken:'test',sleep:async()=>{}});this.claim=claim;this.pages=[];this.blocks=new Map();this.pending=true;this.acks=0;this.failures=0;this.created=0;this.listCursors=[];}
   async validateSources(){}
   async site(body){
+    if(body.action==='resync'){this.pending=true;this.rechecked=true;return {queued:1,next_cursor:null};}
     if(body.action==='list')return {jobs:this.pending?[{id:this.claim.record.id,ticket:'ticket',lease_until:null}]:[],next_cursor:null};
     if(body.action==='claim')return this.claim;
     if(body.action==='ack'){if(this.stale)return null;this.acks++;this.pending=false;return {backed_up_at:'now'};}
@@ -58,6 +59,12 @@ test('new page is read back across pagination before acknowledgement; board and 
   assert.equal(result.completed,1);assert.equal(result.pending,0);assert.equal(r.acks,1);
   assert.equal(r.pages[0].parent.data_source_id,'second-source');assert.ok(r.listCursors.includes(3));
   assert.deepEqual((await readRecovery(r.blocks.get('page-1'))).record,record);
+});
+test('manual existing-backup verification reuses the same Notion page',async()=>{
+  const r=new FakeRunner(await makeClaim(record));await r.run();
+  assert.equal(r.pending,false);
+  const result=await r.run({verifyExisting:true});
+  assert.equal(r.rechecked,true);assert.equal(result.completed,1);assert.equal(r.created,1);assert.equal(r.acks,2);
 });
 test('delete and restore update the same page, retain original text, and explicitly clear deletion date',async()=>{
   const r=new FakeRunner(await makeClaim(record));await r.run();

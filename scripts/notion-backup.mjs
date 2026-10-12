@@ -157,8 +157,18 @@ export class BackupRunner {
       p['상태']?.select?.name!==(record.deleted_at?'삭제됨':'정상') || (record.deleted_at?deleted===null||Math.floor(Date.parse(deleted)/60000)!==Math.floor(Date.parse(record.deleted_at)/60000):deleted!==null))throw new BackupError('Notion readback verification failed');
     return page.id;
   }
-  async run() {
+  async run({verifyExisting=false}={}) {
     await this.validateSources();
+    if(verifyExisting) {
+      let after;const seen=new Set();
+      do {
+        const page=await this.site({action:'resync',...(after?{after}:{})});
+        if(!page)throw new BackupError('Existing backup recheck was not queued');
+        after=page.next_cursor;
+        if(after&&seen.has(after))throw new BackupError('Repeated recheck cursor');
+        seen.add(after);
+      }while(after);
+    }
     const jobs=await this.jobs(),result={completed:0,failed:0,deferred:0,pending:0};
     for(const job of jobs) {
       if(job.lease_until && Date.parse(job.lease_until)>this.now().getTime()){result.deferred++;continue;}
@@ -185,7 +195,7 @@ if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))
     const config=JSON.parse(await readFile(new URL('../.openai/backup.json',import.meta.url),'utf8'));
     if(!process.env.DOZANG_BACKUP_CONFIG || !process.env.NOTION_API_TOKEN)throw new BackupError('Register NOTION_API_TOKEN and DOZANG_BACKUP_CONFIG in GitHub Actions secrets');
     let connection;try{connection=JSON.parse(process.env.DOZANG_BACKUP_CONFIG);}catch{throw new BackupError('DOZANG_BACKUP_CONFIG must contain the copied connection JSON');}
-    const result=await new BackupRunner({config,connection,notionToken:process.env.NOTION_API_TOKEN}).run();
+    const result=await new BackupRunner({config,connection,notionToken:process.env.NOTION_API_TOKEN}).run({verifyExisting:process.env.NOTION_VERIFY_EXISTING==='true'});
     console.log(JSON.stringify(result));
     if(result.failed)process.exitCode=1;
   }catch(error){console.error(error instanceof BackupError?error.message:'Backup configuration or validation failed; source records retained');process.exitCode=1;}

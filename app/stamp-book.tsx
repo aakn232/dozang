@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ChevronLeft, ChevronRight, Stamp, Star, Grid2X2, List, RefreshCw, Trash2, X, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Stamp, Grid2X2, List, RefreshCw, Trash2, X, Plus, ArrowUpRight } from 'lucide-react';
 import { koreaDay, stampOrder, MAX_STAMP_CONTENT_LENGTH, BOARDS, type BoardId, type StampRecord } from '../lib/stamps';
 import BackupPanel from './backup-panel';
 
@@ -35,7 +35,13 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [view, setView] = useState('calendar');
-  const [selectedDay, setSelectedDay] = useState('');
+  const [selectedDay, setSelectedDay] = useState(initialDay);
+  const [saveError, setSaveError] = useState('');
+  const [celebration, setCelebration] = useState('');
+  const savedFocusPending = useRef(false);
+  const composerTrigger = useRef<HTMLElement | null>(null);
+  const composerDialog = useRef<HTMLDialogElement>(null);
+  const contentInput = useRef<HTMLTextAreaElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<StampRecord | null>(null);
   const [password, setPassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -79,12 +85,20 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
     return () => { document.removeEventListener('visibilitychange', sync); clearInterval(timer); };
   }, [load]);
 
+  useEffect(() => {
+    if (!saving && savedFocusPending.current) {
+      savedFocusPending.current = false;
+      composerDialog.current?.close();
+      composerTrigger.current?.focus({ preventScroll: true });
+    }
+  }, [saving]);
+
   async function addStamp(event: FormEvent) {
     event.preventDefault();
     if (mutationPending.current) return;
     mutationPending.current = true;
     mutationRevision.current++;
-    setSaving(true); setMessage(''); setError('');
+    setSaving(true); setMessage(''); setSaveError('');
     try {
       const day = adminActive ? stampDay : today;
       if (!pendingAdd.current || pendingAdd.current.content !== content || pendingAdd.current.day !== day) {
@@ -102,9 +116,10 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
       setRecords(previous => [data.record, ...previous.filter(r => r.id !== data.record.id)].sort(stampOrder));
       setToday(data.today); setMonth(data.record.day.slice(0,7));
       setContent(''); pendingAdd.current = null;
-      setSelectedDay(''); setView('list');
+      setSelectedDay(data.record.day); setView('calendar');
+      setCelebration(data.record.id); savedFocusPending.current = true;
       setMessage(`${boardName} 도장판의 ${formatDate(data.record.day)}에 잘했어요! 도장 하나를 추가했어요.`);
-    } catch (err) { setError(err instanceof Error ? err.message : '도장을 저장하지 못했습니다.'); }
+    } catch (err) { setSaveError(err instanceof Error ? err.message : '도장을 저장하지 못했습니다.'); }
     finally { setSaving(false); mutationPending.current = false; }
   }
 
@@ -114,7 +129,7 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
     logoTaps.current.last = now;
     if (logoTaps.current.count < 5 || mutationPending.current || unlocking) return;
     logoTaps.current.count = 0;
-    if (adminActive) { document.getElementById('stamp-day')?.focus(); return; }
+    if (adminActive) { openComposer(); return; }
     setAdminPassword(''); setAdminError('');
     adminDialog.current?.showModal(); adminInput.current?.focus();
   }
@@ -170,97 +185,90 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
   }
   function moveMonth(delta: number) {
     const [year, mon] = month.split('-').map(Number);
-    setMonth(new Date(Date.UTC(year, mon - 1 + delta, 1)).toISOString().slice(0,7));
+    const nextMonth = new Date(Date.UTC(year, mon - 1 + delta, 1)).toISOString().slice(0,7);
+    setMonth(nextMonth);
+    setSelectedDay(nextMonth === today.slice(0,7) ? today : records.find(record => record.day.startsWith(nextMonth))?.day ?? `${nextMonth}-01`);
   }
-  function showDay(day: string) { setSelectedDay(day); setView('list'); }
+  function showDay(day: string) { setSelectedDay(day); }
+  function openComposer() {
+    setSaveError(''); composerTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; composerDialog.current?.showModal();
+    // Keep the sheet overview visible on phones; focus can move to the text field naturally.
+  }
+  function closeComposer() { if (!saving) composerDialog.current?.close(); }
   const [year, mon] = month.split('-').map(Number);
   const first = new Date(Date.UTC(year, mon - 1, 1)).getUTCDay();
   const count = new Date(Date.UTC(year, mon, 0)).getUTCDate();
   const monthRecords = records.filter(record => record.day.startsWith(month));
-  const visibleRecords = selectedDay ? records.filter(record => record.day === selectedDay) : records;
+  const visibleRecords = view === 'calendar' ? records.filter(record => record.day === selectedDay) : records;
   const dayCounts = new Map<string, number>();
   for (const record of records) dayCounts.set(record.day, (dayCounts.get(record.day) ?? 0) + 1);
 
-  return <>
-    <header>
-      <button className="brand" type="button" onClick={tapLogo} aria-label="커플도장"><span className="brand-mark"><Heart size={22} /></span>커플도장<span className="brand-en">dozang</span></button>
-      <div className="account"><span>기훈 & 빛나</span></div>
+  return <div className={`stamp-app board-${board}`}>
+    <header className="site-header">
+      <button className="brand" type="button" onClick={tapLogo} aria-label="커플도장"><span className="brand-mark" aria-hidden="true"><Seal small /></span><span>커플도장</span></button>
+      <span className="couple-name">기훈 <span aria-hidden="true">&</span> 빛나</span>
     </header>
-    <main>
-      <div className="intro"><p className="eyebrow">OUR COUPLE STAMPS</p><h1>서로에게, 잘했어요!</h1><p>작은 노력도 기억하며, 서로의 도장을 채워요.</p></div>
-      <section className="couple-switch" aria-label="도장판 전환">
-        <div className="partner-buttons">{(Object.keys(BOARDS) as BoardId[]).map(id => <button key={id} type="button" className={board === id ? 'active' : ''} aria-pressed={board === id} disabled={saving || deleting || unlocking} onClick={() => onSwitch(id)}><Heart size={18} /><span>{BOARDS[id]} 도장판</span></button>)}</div>
-        <p aria-live="polite">지금은 <strong>{boardName}</strong>에게 도장을 찍고 있어요.</p>
+    <main className="notebook-main">
+      <section className="intro" aria-labelledby="book-title">
+        <div><p className="intro-note">우리 둘의 칭찬 노트</p><h1 id="book-title">서로에게, <span>잘했어요!</span></h1><p className="intro-description">작은 노력도, 다정한 마음도 오래 기억해요.</p></div>
+        <div className="intro-seal" aria-hidden="true"><Seal /></div>
       </section>
-      <div className="workspace">
-        <aside>
-          <section className="check-card">
-            <div className="card-top"><span>{boardName}에게 주는 칭찬</span><span className="tag">잘할 때마다</span></div>
-            <p className="today-date">{formatDate(today)}</p>
-            <div className="composer-overview"><div className="big-stamp praise-stamp"><Star size={30} strokeWidth={1.4} /><strong>잘했어요!</strong></div><div><h2>어떤 일을 잘했나요?</h2><p className="card-desc">작은 노력도 칭찬으로 남겨요.</p></div></div>
-            <form className="stamp-composer" onSubmit={addStamp}>
-              {adminActive && <section className="admin-panel" aria-label="관리자 모드">
-                <div className="admin-panel-heading"><strong>관리자 모드</strong><button type="button" onClick={leaveAdmin} disabled={saving}>종료</button></div>
-                <label htmlFor="stamp-day">도장 날짜</label>
-                <input id="stamp-day" type="date" value={stampDay} max={today} onChange={event => setStampDay(event.target.value)} required disabled={saving} />
-                <p>오늘 또는 지난 날짜에 도장을 추가할 수 있어요.</p>
-              </section>}
-              <div className="content-label"><label htmlFor="stamp-content">칭찬 내용 <span>선택</span></label><span id="content-count">{content.length.toLocaleString('ko-KR')}/{MAX_STAMP_CONTENT_LENGTH.toLocaleString('ko-KR')}</span></div>
-              <textarea id="stamp-content" name="content" maxLength={MAX_STAMP_CONTENT_LENGTH} rows={3} placeholder="예: 오늘 책을 끝까지 읽었어요!" value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help" />
-              <p id="content-help" className="content-help">적은 내용은 도장과 함께 모두에게 보여요.</p>
-              <button className="primary" type="submit" disabled={loading || saving || deleting}><Stamp size={19} />{saving ? '도장 찍는 중…' : loading ? '도장 확인 중…' : '잘했어요! 도장 찍기'}</button>
-            </form>
-            <p className="timezone">하루에 여러 개 찍을 수 있어요.</p>
-          </section>
-          <section className="stats" aria-label="칭찬 도장 개수">
-            <div><span><Stamp size={17} />모은 도장</span><strong>{loading ? '—' : records.length}<small>개</small></strong></div>
-            <div><span><Star size={17} />오늘의 칭찬</span><strong>{loading ? '—' : dayCounts.get(today) ?? 0}<small>개</small></strong></div>
-          </section>
-          {adminActive&&<BackupPanel board={board} password={adminAccess.password} onRestore={()=>load(true)} />}
-        </aside>
-        <section className="record-card">
-          <div className="record-heading">
-            <div><p className="eyebrow">STAMP COLLECTION</p><h2>{boardName}의 칭찬 도장</h2></div>
-            <div className="view-switch" aria-label="도장 보기 방식">
-              <button aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}><Grid2X2 size={16} />달력</button>
-              <button aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => { setSelectedDay(''); setView('list'); }}><List size={16} />전체 도장</button>
-            </div>
-          </div>
-          {error && <div className="error" role="alert">{error}<button onClick={() => void load()}><RefreshCw size={15} />다시 불러오기</button></div>}
-          <div aria-live="polite">{message && <p className="success">{message}</p>}</div>
-          {loading ? <div className="empty">도장을 불러오고 있어요…</div> : view === 'calendar' ? <>
-            <div className="month-nav">
-              <h3>{year}년 {mon}월 <span>도장 {monthRecords.length}개</span></h3>
-              <div><button onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft size={20} /></button><button className="this-month" onClick={() => setMonth(today.slice(0,7))}>이번 달</button><button onClick={() => moveMonth(1)} disabled={month >= today.slice(0,7)} aria-label="다음 달"><ChevronRight size={20} /></button></div>
-            </div>
+      <div className="book-toolbar">
+        <section className="couple-switch" aria-label="도장판 전환">
+          {(Object.keys(BOARDS) as BoardId[]).map(id => <button key={id} type="button" className={board === id ? 'active' : ''} aria-pressed={board === id} disabled={saving || deleting || unlocking} onClick={() => onSwitch(id)}><span className={`partner-dot dot-${id}`} aria-hidden="true" />{BOARDS[id]}의 도장판</button>)}
+        </section>
+        <button className="primary toolbar-compose" type="button" onClick={openComposer} disabled={loading || saving || deleting}><Plus size={18} />칭찬 도장 찍기</button>
+      </div>
+      <section className="notebook" aria-label={`${boardName}의 칭찬 기록`}>
+        <div className="book-heading">
+          <div className="board-summary"><h2>{boardName}에게 모인 마음</h2><p>모은 도장 <strong>{loading ? '—' : records.length}</strong><span aria-hidden="true">·</span>오늘 <strong>{loading ? '—' : dayCounts.get(today) ?? 0}</strong></p></div>
+          <div className="view-switch" aria-label="도장 보기 방식"><button aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}><Grid2X2 size={15} /><span>달력</span></button><button aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}><List size={17} /><span>전체 도장</span></button></div>
+        </div>
+        {error && <div className="error" role="alert"><span>{error}</span><button onClick={() => void load()}><RefreshCw size={15} />다시 불러오기</button></div>}
+        <div className="feedback" aria-live="polite" aria-atomic="true">{message && <p className="success" key={message}><Stamp size={17} />{message}</p>}</div>
+        {loading ? <div className="loading-state" role="status"><div className="loading-calendar" aria-hidden="true">{Array.from({length:28},(_,i)=><span key={i}/>)}</div><p>칭찬 노트를 펼치고 있어요…</p></div> : error && records.length === 0 ? <div className="empty"><h4>칭찬 노트를 불러오지 못했어요</h4><p>연결을 확인하고 위의 다시 불러오기를 눌러 주세요.</p></div> : <div className={`book-pages ${view === 'list' ? 'list-view' : ''}`}>
+          {view === 'calendar' && <section className="calendar-pane" aria-label="월별 칭찬 달력">
+            <div className="month-nav"><div className="month-title"><span>{year}</span><h3>{mon}<small>월</small></h3></div><div className="month-actions"><button onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft size={20} /></button><button className="this-month" onClick={() => {setMonth(today.slice(0,7));setSelectedDay(today);}}>이번 달</button><button onClick={() => moveMonth(1)} disabled={month >= today.slice(0,7)} aria-label="다음 달"><ChevronRight size={20} /></button></div></div>
             <div className="calendar"><div className="weekdays">{['일','월','화','수','목','금','토'].map(day => <span key={day}>{day}</span>)}</div>
               <div className="dates">
-                {Array.from({ length: first }, (_, i) => <div key={`pad${i}`} className="day blank" />)}
+                {Array.from({ length: first }, (_, i) => <div key={`pad${i}`} className="day blank" aria-hidden="true" />)}
                 {Array.from({ length: count }, (_, i) => {
                   const day = `${month}-${String(i + 1).padStart(2,'0')}`;
                   const amount = dayCounts.get(day) ?? 0, isToday = day === today;
-                  const content = <><span className="day-number">{i + 1}</span>{amount ? <span className="mini-stamp"><Star size={16} /><b>{amount}개</b></span> : isToday ? <span className="today-label">오늘</span> : <span className="day-dot" />}</>;
-                  const className = `day ${isToday ? 'today ' : ''}${amount ? 'done ' : ''}${day > today ? 'future' : ''}`;
-                  return amount ? <button key={day} className={className} onClick={() => showDay(day)} aria-label={`${day} 칭찬 도장 ${amount}개 보기`}>{content}</button> : <div key={day} className={className}>{content}</div>;
+                  return <button key={day} type="button" className={`day ${isToday ? 'today ' : ''}${amount ? 'done ' : ''}${day > today ? 'future ' : ''}${selectedDay === day ? 'selected' : ''}`} disabled={day > today} onClick={() => showDay(day)} aria-pressed={selectedDay === day} aria-current={isToday ? 'date' : undefined} aria-label={`${formatDate(day)}${isToday ? ', 오늘' : ''}, 칭찬 도장 ${amount}개`}><span className="day-number">{i + 1}</span>{amount ? <span className="mini-stamp" aria-hidden="true"><Seal small /><b>{amount}</b></span> : isToday ? <span className="today-label">오늘</span> : null}</button>;
                 })}
+                {Array.from({length:(7-(first+count)%7)%7},(_,i)=><div key={`end${i}`} className="day blank" aria-hidden="true" />)}
               </div>
             </div>
-            <div className="calendar-footer"><span><i />칭찬 도장이 있는 날</span><span>날짜를 누르면 도장을 볼 수 있어요.</span></div>
-          </> : <div className="history">
-            {selectedDay && <div className="day-filter"><span>{formatDate(selectedDay)}</span><button onClick={() => setSelectedDay('')}>전체 도장 보기</button></div>}
-            {visibleRecords.length === 0 ? <div className="empty"><Stamp size={36} /><h3>아직 찍힌 도장이 없어요.</h3><p>잘한 일을 칭찬하고 첫 도장을 찍어 보세요.</p></div> : <>
-              <p className="history-total">{selectedDay ? '이날 모은' : '지금까지 모은'} 칭찬 도장 <b>{visibleRecords.length}개</b></p>
-              <ul>{visibleRecords.map(record => <li key={record.id}>
-                <span className="history-icon"><Star size={20} /></span>
-                <div className="stamp-details"><strong>잘했어요!</strong>{record.content && <p className="stamp-content">{record.content}</p>}<time>{record.day.replaceAll('-', '. ')}{koreaDay(new Date(record.created_at)) === record.day ? ` · ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ` · ${formatDate(koreaDay(new Date(record.created_at)))}에 추가`}</time></div>
-                <button className="remove-stamp" disabled={saving || deleting} onClick={() => openDelete(record)} aria-label={`${formatDate(record.day)} 도장 없애기`}><Trash2 size={16} />없애기</button>
-              </li>)}</ul>
-            </>}
-          </div>}
-        </section>
-      </div>
+            <div className="calendar-footer"><span>이달의 칭찬 <strong>{monthRecords.length}개</strong></span><span>날짜를 눌러 마음을 꺼내 봐요</span></div>
+          </section>}
+          <section className="detail-pane" aria-labelledby="detail-title">
+            <div className="detail-heading"><div><p className="detail-kicker">{view === 'calendar' ? '이날의 칭찬' : '차곡차곡 모은 칭찬'}</p><h3 id="detail-title">{view === 'calendar' ? `${Number(selectedDay.slice(5,7))}월 ${Number(selectedDay.slice(8))}일` : '우리의 칭찬 기록'}{view === 'calendar' && selectedDay === today && <span>오늘</span>}</h3></div><span className="detail-count">{visibleRecords.length}개</span></div>
+            {visibleRecords.length === 0 ? <div className="empty"><span className="empty-seal" aria-hidden="true"><Seal /></span><h4>{records.length === 0 ? '첫 칭찬을 기다리는 중' : '아직 찍힌 도장이 없어요'}</h4><p>{records.length === 0 ? '고마웠던 순간, 잘해낸 일을\n도장 하나로 남겨 주세요.' : '매일 채우지 않아도 괜찮아요.\n칭찬하고 싶은 순간에 찍어 주세요.'}</p>{(selectedDay === today || view === 'list') && <button className="text-action" type="button" onClick={() => {setStampDay(today);openComposer();}}>오늘의 칭찬 남기기<ArrowUpRight size={16} /></button>}</div> : <ul className="stamp-history">{visibleRecords.map(record => <li key={record.id} className={celebration === record.id ? 'fresh-stamp' : ''}>
+              <div className="record-top"><span className="record-seal" aria-hidden="true"><Seal small /></span><div><strong>잘했어요!</strong><time dateTime={record.created_at}>{view === 'list' ? `${record.day.replaceAll('-', '. ')} · ` : ''}{koreaDay(new Date(record.created_at)) === record.day ? new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at)) : `${formatDate(koreaDay(new Date(record.created_at)))}에 추가`}</time></div><button type="button" className="remove-stamp" disabled={saving || deleting} onClick={() => openDelete(record)} aria-label={`${formatDate(record.day)} 도장 없애기`}><Trash2 size={16} /></button></div>
+              {record.content ? <p className="stamp-content">{record.content}</p> : <p className="wordless-stamp">말 대신 도장으로 전한 칭찬</p>}
+            </li>)}</ul>}
+          </section>
+        </div>}
+      </section>
+      {adminActive && <section className="admin-workspace"><div className="admin-mode-bar"><span>관리자 모드가 켜져 있어요</span><button type="button" onClick={openComposer}>지난 날짜에 도장 찍기</button><button type="button" onClick={leaveAdmin} disabled={saving}>종료</button></div><BackupPanel board={board} password={adminAccess.password} onRestore={()=>load(true)} /></section>}
+      <p className="notebook-caption">잘한 일은 작아도, 남겨 둔 마음은 오래가니까.</p>
     </main>
-    <footer><span className="footer-logo">커플도장 <small>dozang</small></span><span>둘이 함께, 잘한 일을 오래 기억해요.</span><span>Asia/Seoul · KST</span></footer>
+    <footer className="site-footer"><span>기훈과 빛나의 칭찬 노트</span><span>한국 시간 기준</span></footer>
+    <div className="mobile-compose"><button className="primary" type="button" onClick={openComposer} disabled={loading || saving || deleting}><Plus size={20} /><span>칭찬 도장 찍기</span><span className="compose-recipient">{boardName}에게</span></button></div>
+    <dialog ref={composerDialog} className="composer-dialog" aria-labelledby="composer-title" onCancel={event => {if(saving) event.preventDefault();}}>
+      <div className="sheet-handle" aria-hidden="true" />
+      <div className="dialog-heading"><p className="dialog-note">{boardName}에게 주는 마음</p><button type="button" onClick={closeComposer} disabled={saving} aria-label="칭찬 작성 닫기"><X size={22} /></button></div>
+      <div className="composer-title"><div><h2 id="composer-title">어떤 일을 잘했나요?</h2><p>{formatDate(adminActive ? stampDay : today)}<span>하루에 여러 번도 좋아요</span></p></div><span aria-hidden="true"><Seal /></span></div>
+      <form className="stamp-composer" onSubmit={addStamp}>
+        {adminActive && <section className="admin-panel" aria-label="관리자 날짜 선택"><div className="admin-panel-heading"><strong>관리자 모드</strong><button type="button" onClick={leaveAdmin} disabled={saving}>종료</button></div><label htmlFor="stamp-day">도장 날짜</label><input id="stamp-day" type="date" value={stampDay} max={today} onChange={event => setStampDay(event.target.value)} required disabled={saving} /><p>오늘 또는 지난 날짜에 도장을 추가할 수 있어요.</p></section>}
+        <div className="content-label"><label htmlFor="stamp-content">칭찬 한마디 <span>선택</span></label><span id="content-count">{content.length.toLocaleString('ko-KR')} / {MAX_STAMP_CONTENT_LENGTH.toLocaleString('ko-KR')}</span></div>
+        <textarea ref={contentInput} id="stamp-content" name="content" maxLength={MAX_STAMP_CONTENT_LENGTH} rows={5} placeholder="오늘 고마웠던 일, 잘해낸 일을 적어 주세요." value={content} onChange={event => setContent(event.target.value)} disabled={saving} aria-describedby="content-help content-count" />
+        <p id="content-help" className="content-help">내용 없이 도장만 찍어도 좋아요. 적은 내용은 방문자 모두에게 보여요.</p>
+        {saveError && <div className="error composer-error" role="alert">{saveError} 작성한 내용은 그대로 있어요. 다시 찍어 주세요.</div>}
+        <button className="primary" type="submit" disabled={loading || saving || deleting}><Stamp size={20} />{saving ? '마음을 남기는 중…' : '잘했어요! 도장 찍기'}</button>
+      </form>
+    </dialog>
     <dialog ref={adminDialog} className="delete-dialog admin-dialog" aria-labelledby="admin-title" onCancel={event => { if (unlocking) event.preventDefault(); else {setAdminPassword('');setAdminError('');} }}>
       <form onSubmit={unlockAdmin}>
         <div className="dialog-heading"><h2 id="admin-title">관리자 모드</h2><button type="button" onClick={closeAdminDialog} disabled={unlocking} aria-label="닫기"><X size={20} /></button></div>
@@ -284,5 +292,14 @@ function PartnerBoard({ initialDay, board, onSwitch, content, setContent }: {
         <div className="dialog-actions"><button className="cancel-delete" type="button" disabled={deleting} onClick={closeDelete}>취소</button><button className="confirm-delete" type="submit" disabled={deleting || !password}>{deleting ? '없애는 중…' : '도장 없애기'}</button></div>
       </form>
     </dialog>
-  </>;
+  </div>;
+}
+
+function Seal({ small = false }: { small?: boolean }) {
+  return <svg className={`seal ${small ? 'seal-small' : ''}`} viewBox="0 0 100 100" fill="none" aria-hidden="true">
+    <path d="M50 4.5 58 7l8.5-.3 6.8 5.1 8.1 2.5 4.8 7.1 6.3 5.7 1.7 8.4 3.5 7.7-1.7 8.4.5 8.5-4.8 7-2.3 8.2-7 4.9-5.5 6.5-8.3 1.9-7.7 3.7-8.4-1.5-8.5.7-7.1-4.6-8.2-2.1-5.1-6.9-6.6-5.3-2.1-8.3-3.9-7.5 1.3-8.4-1-8.5 4.5-7.3 1.9-8.2 6.7-5.3 5.2-6.7 8.2-2.3L50 4.5Z" fill="currentColor" opacity=".055" />
+    <circle cx="50" cy="50" r="44" stroke="currentColor" strokeWidth="1.6" strokeDasharray="119 2 51 2 95 7" /><circle cx="50" cy="50" r="38.5" stroke="currentColor" strokeWidth=".8" />
+    <path d="m50 20 4.4 9 9.9 1.5-7.2 7 1.7 9.8-8.8-4.6-8.8 4.6 1.7-9.8-7.2-7 9.9-1.5L50 20Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    {small ? <path d="m33 61 11 10 23-19" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : <><text x="50" y="65" textAnchor="middle" fill="currentColor" fontSize="15" fontWeight="700">잘했어요!</text><path d="M34 75c10 3 21 3 32-1" stroke="currentColor" strokeLinecap="round" /></>}
+  </svg>;
 }

@@ -34,8 +34,3 @@ jobs:
           DOZANG_BACKUP_CONFIG: ${{ secrets.DOZANG_BACKUP_CONFIG }}
           NOTION_VERIFY_EXISTING: ${{ inputs.verify_existing }}
         run: node --experimental-strip-types scripts/notion-backup.mjs
-      - name: Retry queued phone notifications
-        if: always()
-        env:
-          DOZANG_BACKUP_CONFIG: ${{ secrets.DOZANG_BACKUP_CONFIG }}
-        run: node scripts/push-retry.mjs
